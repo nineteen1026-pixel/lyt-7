@@ -1,0 +1,58 @@
+{% extends 'base.html' %}
+
+{% block title %}新增记录 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>新增垂钓记录</h2>
+    </div>
+
+    <form method="POST" class="log-form">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="spot">钓点 <span class="required">*</span></label>
+                <input type="text" id="spot" name="spot" placeholder="例如：东湖水库" required>
+            </div>
+
+            <div class="form-group">
+                <label for="created_at">日期</label>
+                <input type="date" id="created_at" name="created_at">
+            </div>
+
+            <div class="form-group">
+                <label for="weather">天气 <span class="required">*</span></label>
+                <input type="text" id="weather" name="weather" placeholder="例如：晴转多云 25℃" required>
+            </div>
+
+            <div class="form-group">
+                <label for="water_level">水位 <span class="required">*</span></label>
+                <input type="text" id="water_level" name="water_level" placeholder="例如：正常/涨水/退水" required>
+            </div>
+
+            <div class="form-group">
+                <label for="bait">饵料 <span class="required">*</span></label>
+                <input type="text" id="bait" name="bait" placeholder="例如：蓝鲫+九一八" required>
+            </div>
+
+            <div class="form-group">
+                <label for="fish_species">鱼种 <span class="required">*</span></label>
+                <input type="text" id="fish_species" name="fish_species" placeholder="例如：鲫鱼、鲤鱼、白条" required>
+            </div>
+
+            <div class="form-group full-width">
+                <label for="harvest">收获情况 <span class="required">*</span></label>
+                <textarea id="harvest" name="harvest" rows="3" placeholder="例如：鲫鱼5条约2斤，白条若干" required></textarea>
+            </div>
+
+            <div class="form-group full-width">
+                <label for="next_strategy">下次策略</label>
+                <textarea id="next_strategy" name="next_strategy" rows="3" placeholder="例如：换更深的钓位，尝试用玉米钓草鱼"></textarea>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">保存记录</button>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">取消</a>
+        </div>
+    </form>
+{% endblock %}

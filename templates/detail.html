@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}记录详情 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>记录详情</h2>
+        <div>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">返回列表</a>
+            <form method="POST" action="{{ url_for('delete_log', log_id=log['id']) }}" class="inline-form" onsubmit="return confirm('确定要删除这条记录吗？');">
+                <button type="submit" class="btn btn-danger">删除</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="detail-card">
+        <div class="detail-header">
+            <span class="detail-date">📅 {{ log['created_at'] }}</span>
+            <span class="detail-spot">📍 {{ log['spot'] }}</span>
+        </div>
+
+        <div class="detail-grid">
+            <div class="detail-item">
+                <span class="detail-label">天气</span>
+                <span class="detail-value">{{ log['weather'] }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">水位</span>
+                <span class="detail-value">{{ log['water_level'] }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">饵料</span>
+                <span class="detail-value">{{ log['bait'] }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">鱼种</span>
+                <span class="detail-value">{{ log['fish_species'] }}</span>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>🎯 收获情况</h3>
+            <p class="detail-text">{{ log['harvest'] }}</p>
+        </div>
+
+        {% if log['next_strategy'] %}
+            <div class="detail-section">
+                <h3>💡 下次策略</h3>
+                <p class="detail-text">{{ log['next_strategy'] }}</p>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

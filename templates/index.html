@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+
+{% block title %}首页 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>最近记录</h2>
+        <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>
+    </div>
+
+    {% if logs %}
+        <div class="log-list">
+            {% for log in logs %}
+                <div class="log-card">
+                    <div class="log-header">
+                        <span class="log-date">{{ log['created_at'] }}</span>
+                        <span class="log-spot">📍 {{ log['spot'] }}</span>
+                    </div>
+                    <div class="log-body">
+                        <div class="log-row">
+                            <span class="label">天气：</span>
+                            <span>{{ log['weather'] }}</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="label">水位：</span>
+                            <span>{{ log['water_level'] }}</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="label">饵料：</span>
+                            <span>{{ log['bait'] }}</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="label">鱼种：</span>
+                            <span>{{ log['fish_species'] }}</span>
+                        </div>
+                        <div class="log-row">
+                            <span class="label">收获：</span>
+                            <span class="harvest">{{ log['harvest'] }}</span>
+                        </div>
+                    </div>
+                    <div class="log-footer">
+                        <a href="{{ url_for('log_detail', log_id=log['id']) }}" class="btn btn-small">查看详情</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>还没有任何记录，快去添加第一条吧！</p>
+            <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>
+        </div>
+    {% endif %}
+{% endblock %}
