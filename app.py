@@ -490,6 +490,16 @@ def parse_harvest_value(harvest_str):
     if not harvest_str:
         return 0
 
+    zero_keywords = [
+        '空军', '白板', '打龟', '空手', '空竿', '光头',
+        '没钓到', '无收获', '零收获', '零', '0', '打飞机',
+        '参军', '空', '龟', '白跑一趟', '参军了', '空军了'
+    ]
+    lower_str = harvest_str.lower()
+    for kw in zero_keywords:
+        if kw.lower() in lower_str:
+            return 0
+
     match = re.search(r'(\d+(?:\.\d+)?)', harvest_str)
     if match:
         num_str = match.group(1)
@@ -507,7 +517,7 @@ def parse_harvest_value(harvest_str):
         except ValueError:
             pass
 
-    return 1
+    return 0
 
 
 @app.route('/monthly-report')
@@ -633,7 +643,7 @@ def get_bait_usage_stats(conn, bait_name):
 @app.route('/baits')
 def baits_list():
     conn = get_db()
-    sort_by = request.args.get('sort', 'name')
+    sort_by = request.args.get('sort', 'success')
 
     baits = conn.execute('SELECT * FROM baits ORDER BY name').fetchall()
 
