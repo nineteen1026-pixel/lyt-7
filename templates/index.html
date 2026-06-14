@@ -44,6 +44,9 @@
                         <div class="log-row">
                             <span class="label">天气：</span>
                             <span>{{ log['weather'] }}</span>
+                            {% if log['temperature'] %}<span class="log-tag">🌡 {{ log['temperature'] }}</span>{% endif %}
+                            {% if log['humidity'] %}<span class="log-tag">💧 {{ log['humidity'] }}</span>{% endif %}
+                            {% if log['wind'] %}<span class="log-tag">🌬 {{ log['wind'] }}</span>{% endif %}
                         </div>
                         <div class="log-row">
                             <span class="label">水位：</span>

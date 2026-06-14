@@ -1,6 +1,9 @@
 import os
 import re
 import sqlite3
+import urllib.request
+import urllib.parse
+import json
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
@@ -8,11 +11,22 @@ app = Flask(__name__)
 app.secret_key = 'fishing_log_secret_key'
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fishing_log.db')
 
+WEATHER_API_CONFIG = {
+    'city': '北京',
+    'timeout': 5,
+}
+
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def column_exists(conn, table_name, column_name):
+    cursor = conn.execute(f"PRAGMA table_info({table_name})")
+    columns = [row['name'] for row in cursor.fetchall()]
+    return column_name in columns
 
 
 def init_db():
@@ -30,6 +44,13 @@ def init_db():
             created_at DATE NOT NULL
         )
     ''')
+
+    if not column_exists(conn, 'fishing_logs', 'temperature'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN temperature TEXT')
+    if not column_exists(conn, 'fishing_logs', 'humidity'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN humidity TEXT')
+    if not column_exists(conn, 'fishing_logs', 'wind'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN wind TEXT')
     conn.execute('''
         CREATE TABLE IF NOT EXISTS fishing_spots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -122,21 +143,24 @@ def add_log():
         harvest = request.form['harvest'].strip()
         next_strategy = request.form['next_strategy'].strip()
         created_at = request.form['created_at'] or datetime.now().strftime('%Y-%m-%d')
+        temperature = request.form.get('temperature', '').strip()
+        humidity = request.form.get('humidity', '').strip()
+        wind = request.form.get('wind', '').strip()
 
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
         else:
             conn.execute('''
-                INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at))
+                INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at, temperature, humidity, wind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at, temperature or None, humidity or None, wind or None))
             conn.commit()
             flash('记录添加成功！', 'success')
             conn.close()
             return redirect(url_for('index'))
 
     conn.close()
-    return render_template('add.html', bait_list=bait_list)
+    return render_template('add.html', bait_list=bait_list, default_city=WEATHER_API_CONFIG['city'])
 
 
 @app.route('/log/<int:log_id>')
@@ -771,6 +795,105 @@ def import_bait(bait_name):
     finally:
         conn.close()
     return redirect(url_for('baits_list'))
+
+
+@app.route('/api/weather/current')
+def api_weather_current():
+    city = request.args.get('city', WEATHER_API_CONFIG['city'])
+    try:
+        encoded_city = urllib.parse.quote(city)
+        url = f'https://wttr.in/{encoded_city}?format=j1'
+        req = urllib.request.Request(url, headers={'User-Agent': 'curl/7.68.0'})
+        with urllib.request.urlopen(req, timeout=WEATHER_API_CONFIG['timeout']) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+
+        current = data.get('current_condition', [{}])[0]
+        weather_desc = ''
+        if current.get('lang_zh'):
+            weather_desc = current['lang_zh'][0].get('value', '')
+        if not weather_desc and current.get('weatherDesc'):
+            weather_desc = current['weatherDesc'][0].get('value', '')
+
+        temp_c = current.get('temp_C', '')
+        humidity = current.get('humidity', '')
+        windspeed = current.get('windspeedKmph', '')
+        winddir = ''
+        if current.get('lang_zh') and len(current.get('lang_zh', [])) > 0:
+            pass
+        if current.get('winddir16Point'):
+            winddir = current['winddir16Point']
+
+        wind_display = ''
+        if winddir and windspeed:
+            wind_display = f'{winddir} {windspeed}km/h'
+        elif windspeed:
+            wind_display = f'{windspeed}km/h'
+
+        weather_full = weather_desc
+        if temp_c:
+            weather_full += f' {temp_c}℃'
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'weather': weather_full,
+                'weather_desc': weather_desc,
+                'temperature': f'{temp_c}℃' if temp_c else '',
+                'temperature_value': temp_c,
+                'humidity': f'{humidity}%' if humidity else '',
+                'humidity_value': humidity,
+                'wind': wind_display,
+                'wind_speed': windspeed,
+                'wind_direction': winddir,
+                'city': city,
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'获取天气失败：{str(e)}'
+        }), 500
+
+
+@app.route('/api/weather/history')
+def api_weather_history():
+    conn = get_db()
+    try:
+        rows = conn.execute('''
+            SELECT DISTINCT weather, temperature, humidity, wind, created_at
+            FROM fishing_logs
+            WHERE weather IS NOT NULL AND weather != ''
+            ORDER BY created_at DESC
+            LIMIT 20
+        ''').fetchall()
+
+        history = []
+        seen = set()
+        for row in rows:
+            key = (row['weather'] or '', row['temperature'] or '', row['humidity'] or '', row['wind'] or '')
+            if key and key not in seen:
+                seen.add(key)
+                history.append({
+                    'weather': row['weather'] or '',
+                    'temperature': row['temperature'] or '',
+                    'humidity': row['humidity'] or '',
+                    'wind': row['wind'] or '',
+                    'date': row['created_at'] or '',
+                })
+                if len(history) >= 10:
+                    break
+
+        return jsonify({
+            'success': True,
+            'data': history
+        })
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': str(e)
+        }), 500
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':

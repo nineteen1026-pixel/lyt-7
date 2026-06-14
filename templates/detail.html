@@ -24,6 +24,24 @@
                 <span class="detail-label">天气</span>
                 <span class="detail-value">{{ log['weather'] }}</span>
             </div>
+            {% if log['temperature'] %}
+            <div class="detail-item">
+                <span class="detail-label">🌡 温度</span>
+                <span class="detail-value">{{ log['temperature'] }}</span>
+            </div>
+            {% endif %}
+            {% if log['humidity'] %}
+            <div class="detail-item">
+                <span class="detail-label">💧 湿度</span>
+                <span class="detail-value">{{ log['humidity'] }}</span>
+            </div>
+            {% endif %}
+            {% if log['wind'] %}
+            <div class="detail-item">
+                <span class="detail-label">🌬 风力</span>
+                <span class="detail-value">{{ log['wind'] }}</span>
+            </div>
+            {% endif %}
             <div class="detail-item">
                 <span class="detail-label">水位</span>
                 <span class="detail-value">{{ log['water_level'] }}</span>
