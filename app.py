@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
@@ -472,19 +473,28 @@ def delete_spot(spot_id):
 def parse_harvest_value(harvest_str):
     if not harvest_str:
         return 0
-    harvest_str = harvest_str.strip()
+    harvest_str = str(harvest_str).strip()
+    if not harvest_str:
+        return 0
+
+    match = re.search(r'(\d+(?:\.\d+)?)', harvest_str)
+    if match:
+        num_str = match.group(1)
+        try:
+            if '.' in num_str:
+                return float(num_str)
+            else:
+                return int(num_str)
+        except ValueError:
+            pass
+
     if harvest_str.startswith('h') or harvest_str.startswith('H'):
         try:
             return int(harvest_str[1:])
         except ValueError:
-            return 1
-    try:
-        return int(harvest_str)
-    except ValueError:
-        try:
-            return float(harvest_str)
-        except ValueError:
-            return 1
+            pass
+
+    return 1
 
 
 @app.route('/monthly-report')
@@ -533,7 +543,6 @@ def monthly_report():
             FROM fishing_logs
             WHERE strftime('%Y-%m', created_at) = ?
             GROUP BY spot
-            ORDER BY log_count DESC
         ''', (selected_month,)).fetchall()
 
         total_spots = len(spot_rows)
@@ -545,18 +554,28 @@ def monthly_report():
 
         total_harvest = sum(parse_harvest_value(log['harvest']) for log in all_logs)
 
-        spot_stats = []
-        for idx, row in enumerate(spot_rows, 1):
+        spot_data = []
+        for row in spot_rows:
             spot_logs = conn.execute('''
                 SELECT harvest FROM fishing_logs
                 WHERE spot = ? AND strftime('%Y-%m', created_at) = ?
             ''', (row['spot'], selected_month)).fetchall()
             spot_harvest = sum(parse_harvest_value(log['harvest']) for log in spot_logs)
-            spot_stats.append({
-                'rank': idx,
+            spot_data.append({
                 'spot': row['spot'],
                 'log_count': row['log_count'],
                 'harvest_count': spot_harvest
+            })
+
+        spot_data.sort(key=lambda x: x['harvest_count'], reverse=True)
+
+        spot_stats = []
+        for idx, data in enumerate(spot_data, 1):
+            spot_stats.append({
+                'rank': idx,
+                'spot': data['spot'],
+                'log_count': data['log_count'],
+                'harvest_count': data['harvest_count']
             })
 
     conn.close()
