@@ -127,13 +127,17 @@ def add_log():
 
 @app.route('/log/<int:log_id>')
 def log_detail(log_id):
+    page = request.args.get('page', 1, type=int)
+    sort_by = request.args.get('sort', 'date_desc')
+    per_page = request.args.get('per_page', 20, type=int)
+
     conn = get_db()
     log = conn.execute('SELECT * FROM fishing_logs WHERE id = ?', (log_id,)).fetchone()
     conn.close()
     if log is None:
         flash('记录不存在！', 'error')
         return redirect(url_for('index'))
-    return render_template('detail.html', log=log)
+    return render_template('detail.html', log=log, page=page, sort_by=sort_by, per_page=per_page)
 
 
 @app.route('/by-spot')
@@ -176,12 +180,16 @@ def by_date():
 
 @app.route('/delete/<int:log_id>', methods=['POST'])
 def delete_log(log_id):
+    page = request.args.get('page', 1, type=int)
+    sort_by = request.args.get('sort', 'date_desc')
+    per_page = request.args.get('per_page', 20, type=int)
+
     conn = get_db()
     conn.execute('DELETE FROM fishing_logs WHERE id = ?', (log_id,))
     conn.commit()
     conn.close()
     flash('记录已删除！', 'success')
-    return redirect(url_for('index'))
+    return redirect(url_for('index', page=page, sort=sort_by, per_page=per_page))
 
 
 def get_spot_visit_count(conn, spot_name):

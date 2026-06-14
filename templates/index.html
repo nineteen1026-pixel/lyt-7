@@ -63,7 +63,7 @@
                         </div>
                     </div>
                     <div class="log-footer">
-                        <a href="{{ url_for('log_detail', log_id=log['id']) }}" class="btn btn-small">查看详情</a>
+                        <a href="{{ url_for('log_detail', log_id=log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-small">查看详情</a>
                     </div>
                 </div>
             {% endfor %}
@@ -115,13 +115,13 @@
         function handleSortChange() {
             const sortValue = document.getElementById('sortSelect').value;
             const perPage = document.getElementById('perPageSelect').value;
-            window.location.href = `{{ url_for('index') }}?sort=${sortValue}&per_page=${perPage}`;
+            window.location.href = `{{ url_for('index') }}?page=1&sort=${sortValue}&per_page=${perPage}`;
         }
 
         function handlePerPageChange() {
             const sortValue = document.getElementById('sortSelect').value;
             const perPage = document.getElementById('perPageSelect').value;
-            window.location.href = `{{ url_for('index') }}?sort=${sortValue}&per_page=${perPage}`;
+            window.location.href = `{{ url_for('index') }}?page=1&sort=${sortValue}&per_page=${perPage}`;
         }
     </script>
 {% endblock %}
