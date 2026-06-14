@@ -1,7 +1,7 @@
 import os
 import sqlite3
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 
 app = Flask(__name__)
 app.secret_key = 'fishing_log_secret_key'
@@ -27,6 +27,28 @@ def init_db():
             harvest TEXT NOT NULL,
             next_strategy TEXT,
             created_at DATE NOT NULL
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS fishing_spots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            latitude REAL,
+            longitude REAL,
+            address TEXT,
+            is_favorite INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS spot_ratings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            spot_id INTEGER NOT NULL,
+            rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (spot_id) REFERENCES fishing_spots(id) ON DELETE CASCADE
         )
     ''')
     conn.commit()
@@ -126,6 +148,283 @@ def delete_log(log_id):
     conn.close()
     flash('记录已删除！', 'success')
     return redirect(url_for('index'))
+
+
+def get_spot_visit_count(conn, spot_name):
+    result = conn.execute(
+        'SELECT COUNT(*) as cnt FROM fishing_logs WHERE spot = ?',
+        (spot_name,)
+    ).fetchone()
+    return result['cnt'] if result else 0
+
+
+def get_spot_avg_rating(conn, spot_id):
+    result = conn.execute(
+        'SELECT AVG(rating) as avg_rating, COUNT(*) as rating_count FROM spot_ratings WHERE spot_id = ?',
+        (spot_id,)
+    ).fetchone()
+    return {
+        'avg_rating': round(result['avg_rating'], 1) if result and result['avg_rating'] else 0,
+        'rating_count': result['rating_count'] if result else 0
+    }
+
+
+@app.route('/spots')
+def spots_list():
+    conn = get_db()
+    filter_type = request.args.get('filter', 'all')
+    sort_by = request.args.get('sort', 'name')
+
+    query = '''
+        SELECT s.*,
+               (SELECT AVG(r.rating) FROM spot_ratings r WHERE r.spot_id = s.id) as avg_rating,
+               (SELECT COUNT(*) FROM spot_ratings r WHERE r.spot_id = s.id) as rating_count
+        FROM fishing_spots s
+    '''
+    params = []
+    conditions = []
+
+    if filter_type == 'favorite':
+        conditions.append('s.is_favorite = 1')
+
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+
+    if sort_by == 'rating':
+        query += ' ORDER BY avg_rating IS NULL, avg_rating DESC, s.name'
+    elif sort_by == 'visit':
+        query += ' ORDER BY (SELECT COUNT(*) FROM fishing_logs l WHERE l.spot = s.name) DESC, s.name'
+    elif sort_by == 'recent':
+        query += ' ORDER BY s.created_at DESC'
+    else:
+        query += ' ORDER BY s.name'
+
+    spots = conn.execute(query, params).fetchall()
+
+    spot_list = []
+    for spot in spots:
+        spot_dict = dict(spot)
+        spot_dict['visit_count'] = get_spot_visit_count(conn, spot['name'])
+        spot_dict['avg_rating'] = round(spot_dict['avg_rating'], 1) if spot_dict['avg_rating'] else 0
+        spot_list.append(spot_dict)
+
+    conn.close()
+    return render_template('spots.html', spots=spot_list, filter_type=filter_type, sort_by=sort_by)
+
+
+@app.route('/spots/add', methods=['GET', 'POST'])
+def add_spot():
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        description = request.form['description'].strip()
+        latitude = request.form['latitude'].strip()
+        longitude = request.form['longitude'].strip()
+        address = request.form['address'].strip()
+
+        if not name:
+            flash('请填写钓点名称！', 'error')
+        else:
+            conn = get_db()
+            try:
+                lat = float(latitude) if latitude else None
+                lng = float(longitude) if longitude else None
+                conn.execute('''
+                    INSERT INTO fishing_spots (name, description, latitude, longitude, address)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (name, description, lat, lng, address))
+                conn.commit()
+                flash('钓点添加成功！', 'success')
+                return redirect(url_for('spots_list'))
+            except sqlite3.IntegrityError:
+                flash('该钓点名称已存在！', 'error')
+            finally:
+                conn.close()
+
+    return render_template('spot_form.html', spot=None)
+
+
+@app.route('/spots/<int:spot_id>')
+def spot_detail(spot_id):
+    conn = get_db()
+    spot = conn.execute('SELECT * FROM fishing_spots WHERE id = ?', (spot_id,)).fetchone()
+
+    if spot is None:
+        conn.close()
+        flash('钓点不存在！', 'error')
+        return redirect(url_for('spots_list'))
+
+    spot_dict = dict(spot)
+    spot_dict['visit_count'] = get_spot_visit_count(conn, spot['name'])
+    rating_info = get_spot_avg_rating(conn, spot_id)
+    spot_dict['avg_rating'] = rating_info['avg_rating']
+    spot_dict['rating_count'] = rating_info['rating_count']
+
+    ratings = conn.execute(
+        'SELECT * FROM spot_ratings WHERE spot_id = ? ORDER BY created_at DESC',
+        (spot_id,)
+    ).fetchall()
+
+    related_logs = conn.execute(
+        'SELECT * FROM fishing_logs WHERE spot = ? ORDER BY created_at DESC, id DESC',
+        (spot['name'],)
+    ).fetchall()
+
+    conn.close()
+    return render_template('spot_detail.html', spot=spot_dict, ratings=ratings, related_logs=related_logs)
+
+
+@app.route('/spots/<int:spot_id>/edit', methods=['GET', 'POST'])
+def edit_spot(spot_id):
+    conn = get_db()
+    spot = conn.execute('SELECT * FROM fishing_spots WHERE id = ?', (spot_id,)).fetchone()
+
+    if spot is None:
+        conn.close()
+        flash('钓点不存在！', 'error')
+        return redirect(url_for('spots_list'))
+
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        description = request.form['description'].strip()
+        latitude = request.form['latitude'].strip()
+        longitude = request.form['longitude'].strip()
+        address = request.form['address'].strip()
+
+        if not name:
+            flash('请填写钓点名称！', 'error')
+        else:
+            try:
+                lat = float(latitude) if latitude else None
+                lng = float(longitude) if longitude else None
+                conn.execute('''
+                    UPDATE fishing_spots
+                    SET name = ?, description = ?, latitude = ?, longitude = ?, address = ?
+                    WHERE id = ?
+                ''', (name, description, lat, lng, address, spot_id))
+                conn.commit()
+                flash('钓点更新成功！', 'success')
+                return redirect(url_for('spot_detail', spot_id=spot_id))
+            except sqlite3.IntegrityError:
+                flash('该钓点名称已存在！', 'error')
+            finally:
+                conn.close()
+    else:
+        conn.close()
+
+    return render_template('spot_form.html', spot=spot)
+
+
+@app.route('/spots/<int:spot_id>/favorite', methods=['POST'])
+def toggle_favorite(spot_id):
+    conn = get_db()
+    spot = conn.execute('SELECT is_favorite FROM fishing_spots WHERE id = ?', (spot_id,)).fetchone()
+
+    if spot is None:
+        conn.close()
+        return jsonify({'success': False, 'message': '钓点不存在'}), 404
+
+    new_status = 1 if spot['is_favorite'] == 0 else 0
+    conn.execute('UPDATE fishing_spots SET is_favorite = ? WHERE id = ?', (new_status, spot_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'success': True, 'is_favorite': new_status == 1})
+
+
+@app.route('/spots/<int:spot_id>/rate', methods=['POST'])
+def rate_spot(spot_id):
+    conn = get_db()
+    spot = conn.execute('SELECT id FROM fishing_spots WHERE id = ?', (spot_id,)).fetchone()
+
+    if spot is None:
+        conn.close()
+        flash('钓点不存在！', 'error')
+        return redirect(url_for('spots_list'))
+
+    rating = request.form.get('rating', type=int)
+    comment = request.form.get('comment', '').strip()
+
+    if not rating or rating < 1 or rating > 5:
+        flash('请选择有效的评分（1-5星）！', 'error')
+    else:
+        conn.execute('''
+            INSERT INTO spot_ratings (spot_id, rating, comment)
+            VALUES (?, ?, ?)
+        ''', (spot_id, rating, comment))
+        conn.commit()
+        flash('评分提交成功！', 'success')
+
+    conn.close()
+    return redirect(url_for('spot_detail', spot_id=spot_id))
+
+
+@app.route('/api/spots/map')
+def spots_map_data():
+    conn = get_db()
+    spots = conn.execute('''
+        SELECT s.id, s.name, s.latitude, s.longitude, s.is_favorite,
+               (SELECT AVG(r.rating) FROM spot_ratings r WHERE r.spot_id = s.id) as avg_rating,
+               (SELECT COUNT(*) FROM fishing_logs l WHERE l.spot = s.name) as visit_count
+        FROM fishing_spots s
+        WHERE s.latitude IS NOT NULL AND s.longitude IS NOT NULL
+    ''').fetchall()
+    conn.close()
+    result = []
+    for s in spots:
+        result.append({
+            'id': s['id'],
+            'name': s['name'],
+            'lat': s['latitude'],
+            'lng': s['longitude'],
+            'is_favorite': bool(s['is_favorite']),
+            'avg_rating': round(s['avg_rating'], 1) if s['avg_rating'] else 0,
+            'visit_count': s['visit_count']
+        })
+    return jsonify(result)
+
+
+@app.route('/api/spots/<int:spot_id>/visits')
+def spot_visits_data(spot_id):
+    conn = get_db()
+    spot = conn.execute('SELECT id, name FROM fishing_spots WHERE id = ?', (spot_id,)).fetchone()
+    if spot is None:
+        conn.close()
+        return jsonify({'error': '钓点不存在'}), 404
+
+    visits = conn.execute('''
+        SELECT created_at, COUNT(*) as count
+        FROM fishing_logs
+        WHERE spot = ?
+        GROUP BY created_at
+        ORDER BY created_at DESC
+    ''', (spot['name'],)).fetchall()
+
+    monthly = conn.execute('''
+        SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+        FROM fishing_logs
+        WHERE spot = ?
+        GROUP BY month
+        ORDER BY month DESC
+        LIMIT 12
+    ''', (spot['name'],)).fetchall()
+
+    conn.close()
+
+    return jsonify({
+        'spot_name': spot['name'],
+        'timeline': [{'date': v['created_at'], 'count': v['count']} for v in visits],
+        'monthly': [{'month': m['month'], 'count': m['count']} for m in monthly]
+    })
+
+
+@app.route('/spots/<int:spot_id>/delete', methods=['POST'])
+def delete_spot(spot_id):
+    conn = get_db()
+    conn.execute('DELETE FROM fishing_spots WHERE id = ?', (spot_id,))
+    conn.commit()
+    conn.close()
+    flash('钓点已删除！', 'success')
+    return redirect(url_for('spots_list'))
 
 
 if __name__ == '__main__':

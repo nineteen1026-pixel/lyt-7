@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if spot %}编辑钓点{% else %}新增钓点{% endif %} - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>{% if spot %}✏️ 编辑钓点{% else %}➕ 新增钓点{% endif %}</h2>
+        <a href="{{ url_for('spots_list') }}" class="btn btn-secondary">返回列表</a>
+    </div>
+
+    <form method="POST" class="log-form spot-form">
+        <div class="form-grid">
+            <div class="form-group full-width">
+                <label>钓点名称 <span class="required">*</span></label>
+                <input type="text" name="name" required maxlength="100"
+                       value="{{ spot['name'] if spot else '' }}"
+                       placeholder="例如：西湖断桥东侧">
+            </div>
+
+            <div class="form-group">
+                <label>🌐 纬度 (Latitude)</label>
+                <input type="number" name="latitude" step="any" min="-90" max="90"
+                       value="{{ '%.6f'|format(spot['latitude']) if spot and spot['latitude'] else '' }}"
+                       placeholder="例如：30.259990">
+            </div>
+
+            <div class="form-group">
+                <label>🌐 经度 (Longitude)</label>
+                <input type="number" name="longitude" step="any" min="-180" max="180"
+                       value="{{ '%.6f'|format(spot['longitude']) if spot and spot['longitude'] else '' }}"
+                       placeholder="例如：120.142550">
+            </div>
+
+            <div class="form-group full-width">
+                <label>🏠 详细地址</label>
+                <input type="text" name="address" maxlength="200"
+                       value="{{ spot['address'] if spot else '' }}"
+                       placeholder="例如：浙江省杭州市西湖区">
+            </div>
+
+            <div class="form-group full-width">
+                <label>📍 坐标定位工具</label>
+                <div class="location-helper">
+                    <button type="button" class="btn btn-secondary" onclick="getLocation()">
+                        📡 获取当前位置
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="openMapPicker()">
+                        🗺️ 在地图中选择
+                    </button>
+                    <span id="location-status" style="margin-left: 10px; font-size: 13px; color: #718096;"></span>
+                </div>
+            </div>
+
+            <div class="form-group full-width">
+                <label>📝 钓点描述</label>
+                <textarea name="description" rows="4" maxlength="500"
+                          placeholder="描述钓点环境、水深、注意事项等...">{{ spot['description'] if spot else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="{{ url_for('spots_list') }}" class="btn btn-secondary">取消</a>
+            <button type="submit" class="btn btn-primary">
+                {% if spot %}保存修改{% else %}添加钓点{% endif %}
+            </button>
+        </div>
+    </form>
+
+    <script>
+    function getLocation() {
+        const statusEl = document.getElementById('location-status');
+        statusEl.textContent = '正在获取位置...';
+
+        if (!navigator.geolocation) {
+            statusEl.textContent = '❌ 浏览器不支持定位功能';
+            statusEl.style.color = '#e53e3e';
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            function(position) {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+
+                document.querySelector('input[name="latitude"]').value = lat.toFixed(6);
+                document.querySelector('input[name="longitude"]').value = lng.toFixed(6);
+
+                statusEl.textContent = `✅ 获取成功: ${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+                statusEl.style.color = '#38a169';
+            },
+            function(error) {
+                let msg = '❌ 获取位置失败';
+                switch(error.code) {
+                    case error.PERMISSION_DENIED:
+                        msg = '❌ 用户拒绝了定位请求';
+                        break;
+                    case error.POSITION_UNAVAILABLE:
+                        msg = '❌ 位置信息不可用';
+                        break;
+                    case error.TIMEOUT:
+                        msg = '❌ 获取位置超时';
+                        break;
+                }
+                statusEl.textContent = msg;
+                statusEl.style.color = '#e53e3e';
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+
+    function openMapPicker() {
+        const lat = document.querySelector('input[name="latitude"]').value;
+        const lng = document.querySelector('input[name="longitude"]').value;
+
+        let url = 'https://www.openstreetmap.org/';
+        if (lat && lng) {
+            url += `?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
+        }
+
+        window.open(url, '_blank');
+        document.getElementById('location-status').innerHTML =
+            '💡 请在打开的地图中右键点击选择位置，复制坐标后粘贴到上方输入框';
+        document.getElementById('location-status').style.color = '#667eea';
+    }
+    </script>
+{% endblock %}

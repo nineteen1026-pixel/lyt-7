@@ -1,0 +1,300 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ spot['name'] }} - 钓点详情{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <h2 style="margin: 0;">🎣 {{ spot['name'] }}</h2>
+            <button class="favorite-btn {% if spot['is_favorite'] %}favorited{% endif %} detail-favorite-btn"
+                    data-spot-id="{{ spot['id'] }}"
+                    onclick="toggleFavorite(this)">
+                {% if spot['is_favorite'] %}★ 已收藏{% else %}☆ 收藏{% endif %}
+            </button>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('edit_spot', spot_id=spot['id']) }}" class="btn btn-secondary">编辑钓点</a>
+            <form method="POST" action="{{ url_for('delete_spot', spot_id=spot['id']) }}"
+                  onsubmit="return confirm('确定要删除此钓点吗？所有评分也将被删除。');"
+                  style="display: inline;">
+                <button type="submit" class="btn btn-danger">删除钓点</button>
+            </form>
+            <a href="{{ url_for('spots_list') }}" class="btn btn-secondary">返回列表</a>
+        </div>
+    </div>
+
+    <div class="detail-card">
+        <div class="detail-header">
+            <div class="spot-rating-large">
+                {% if spot['avg_rating'] > 0 %}
+                    <div class="rating-display">
+                        <span class="big-rating-value">{{ spot['avg_rating'] }}</span>
+                        <div class="big-rating-stars">
+                            {% for i in range(5) %}
+                                {% if i < spot['avg_rating']|round(0, 'floor') %}<span class="star-filled">★</span>
+                                {% else %}<span class="star-empty">☆</span>{% endif %}
+                            {% endfor %}
+                        </div>
+                        <span class="rating-count-text">共 {{ spot['rating_count'] }} 条评分</span>
+                    </div>
+                {% else %}
+                    <span class="no-rating">暂无评分，快来做第一个评分的人吧！</span>
+                {% endif %}
+            </div>
+            <div class="visit-count-box">
+                <span class="visit-icon">📍</span>
+                <div>
+                    <div class="visit-number">{{ spot['visit_count'] }}</div>
+                    <div class="visit-label">到访次数</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-grid">
+            {% if spot['address'] %}
+                <div class="detail-item">
+                    <div class="detail-label">🏠 地址</div>
+                    <div class="detail-value">{{ spot['address'] }}</div>
+                </div>
+            {% endif %}
+            {% if spot['latitude'] and spot['longitude'] %}
+                <div class="detail-item">
+                    <div class="detail-label">📌 坐标定位</div>
+                    <div class="detail-value">
+                        {{ '%.6f'|format(spot['latitude']) }}, {{ '%.6f'|format(spot['longitude']) }}
+                        <a href="https://www.google.com/maps?q={{ spot['latitude'] }},{{ spot['longitude'] }}"
+                           target="_blank" class="map-link" rel="noopener noreferrer">外部地图</a>
+                    </div>
+                </div>
+            {% endif %}
+            <div class="detail-item">
+                <div class="detail-label">📅 创建时间</div>
+                <div class="detail-value">{{ spot['created_at'][:10] if spot['created_at'] else '未知' }}</div>
+            </div>
+        </div>
+
+        {% if spot['description'] %}
+            <div class="detail-section">
+                <h3>📝 钓点描述</h3>
+                <div class="detail-text">{{ spot['description'] }}</div>
+            </div>
+        {% endif %}
+    </div>
+
+    {% if spot['latitude'] and spot['longitude'] %}
+    <div class="detail-section" style="margin-top: 25px;">
+        <h3>🗺️ 坐标定位地图</h3>
+        <div id="spot-map" class="inline-map"></div>
+    </div>
+    {% endif %}
+
+    {% if spot['visit_count'] > 0 %}
+    <div class="detail-section" style="margin-top: 25px;">
+        <h3>📊 到访统计</h3>
+        <div class="visit-stats-grid">
+            <div class="visit-stat-card">
+                <div class="visit-stat-value" id="total-visits">{{ spot['visit_count'] }}</div>
+                <div class="visit-stat-label">总到访次数</div>
+            </div>
+            <div class="visit-stat-card">
+                <div class="visit-stat-value" id="unique-days">-</div>
+                <div class="visit-stat-label">到访天数</div>
+            </div>
+            <div class="visit-stat-card">
+                <div class="visit-stat-value" id="recent-visit">-</div>
+                <div class="visit-stat-label">最近到访</div>
+            </div>
+        </div>
+        <div class="visit-chart-section">
+            <h4>月度到访趋势</h4>
+            <div class="visit-bar-chart" id="visit-bar-chart"></div>
+        </div>
+        <div class="visit-timeline-section">
+            <h4>到访时间线</h4>
+            <div class="visit-timeline" id="visit-timeline"></div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="detail-section" style="margin-top: 25px;">
+        <h3>⭐ 为此钓点评分</h3>
+        <form method="POST" action="{{ url_for('rate_spot', spot_id=spot['id']) }}" class="rating-form">
+            <div class="form-group">
+                <label>评分 <span class="required">*</span></label>
+                <div class="star-input">
+                    {% for i in range(5, 0, -1) %}
+                        <input type="radio" id="star{{ i }}" name="rating" value="{{ i }}" required>
+                        <label for="star{{ i }}">★</label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="form-group">
+                <label>评价内容（可选）</label>
+                <textarea name="comment" rows="3" placeholder="分享一下你对这个钓点的看法..."></textarea>
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">提交评分</button>
+            </div>
+        </form>
+    </div>
+
+    {% if ratings %}
+        <div class="detail-section" style="margin-top: 25px;">
+            <h3>💬 评分记录（{{ ratings|length }}）</h3>
+            <div class="ratings-list">
+                {% for rating in ratings %}
+                    <div class="rating-card">
+                        <div class="rating-card-header">
+                            <div class="rating-card-stars">
+                                {% for i in range(5) %}
+                                    {% if i < rating['rating'] %}★{% else %}☆{% endif %}
+                                {% endfor %}
+                            </div>
+                            <div class="rating-card-date">{{ rating['created_at'][:16].replace('T', ' ') if rating['created_at'] else '' }}</div>
+                        </div>
+                        {% if rating['comment'] %}
+                            <div class="rating-card-comment">{{ rating['comment'] }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    {% if related_logs %}
+        <div class="detail-section" style="margin-top: 25px;">
+            <h3>📋 相关垂钓记录（{{ related_logs|length }}）</h3>
+            <div class="log-list">
+                {% for log in related_logs %}
+                    <div class="log-card">
+                        <div class="log-header">
+                            <span class="log-date">{{ log['created_at'] }}</span>
+                        </div>
+                        <div class="log-body">
+                            <div class="log-row">
+                                <span class="label">天气：</span>
+                                <span>{{ log['weather'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">水位：</span>
+                                <span>{{ log['water_level'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">饵料：</span>
+                                <span>{{ log['bait'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">鱼种：</span>
+                                <span>{{ log['fish_species'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">收获：</span>
+                                <span class="harvest">{{ log['harvest'] }}</span>
+                            </div>
+                        </div>
+                        <div class="log-footer">
+                            <a href="{{ url_for('log_detail', log_id=log['id']) }}" class="btn btn-small">查看详情</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    function toggleFavorite(btn) {
+        const spotId = btn.dataset.spotId;
+        fetch(`/spots/${spotId}/favorite`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.is_favorite) {
+                    btn.classList.add('favorited');
+                    btn.textContent = '★ 已收藏';
+                } else {
+                    btn.classList.remove('favorited');
+                    btn.textContent = '☆ 收藏';
+                }
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    {% if spot['latitude'] and spot['longitude'] %}
+    (function initMap() {
+        const lat = {{ spot['latitude'] }};
+        const lng = {{ spot['longitude'] }};
+        const map = L.map('spot-map').setView([lat, lng], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(map);
+        const marker = L.marker([lat, lng]).addTo(map);
+        marker.bindPopup('<strong>{{ spot['name'] }}</strong>{% if spot['address'] %}<br>{{ spot['address'] }}{% endif %}').openPopup();
+        setTimeout(function() { map.invalidateSize(); }, 100);
+    })();
+    {% endif %}
+
+    {% if spot['visit_count'] > 0 %}
+    (function loadVisitStats() {
+        fetch('/api/spots/{{ spot['id'] }}/visits')
+            .then(r => r.json())
+            .then(data => {
+                var uniqueDays = data.timeline.length;
+                document.getElementById('unique-days').textContent = uniqueDays;
+
+                if (data.timeline.length > 0) {
+                    document.getElementById('recent-visit').textContent = data.timeline[0].date;
+                }
+
+                var chartEl = document.getElementById('visit-bar-chart');
+                if (data.monthly.length > 0) {
+                    var maxCount = Math.max.apply(null, data.monthly.map(function(m) { return m.count; }));
+                    var months = data.monthly.slice().reverse();
+                    months.forEach(function(m) {
+                        var pct = maxCount > 0 ? Math.round((m.count / maxCount) * 100) : 0;
+                        var bar = document.createElement('div');
+                        bar.className = 'bar-row';
+                        bar.innerHTML =
+                            '<span class="bar-label">' + m.month + '</span>' +
+                            '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div>' +
+                            '<span class="bar-value">' + m.count + '次</span>';
+                        chartEl.appendChild(bar);
+                    });
+                } else {
+                    chartEl.innerHTML = '<div class="empty-hint">暂无月度数据</div>';
+                }
+
+                var timelineEl = document.getElementById('visit-timeline');
+                if (data.timeline.length > 0) {
+                    data.timeline.slice(0, 10).forEach(function(v) {
+                        var item = document.createElement('div');
+                        item.className = 'timeline-item';
+                        item.innerHTML =
+                            '<div class="timeline-dot"></div>' +
+                            '<div class="timeline-content">' +
+                            '<span class="timeline-date">' + v.date + '</span>' +
+                            '<span class="timeline-count">' + v.count + '次到访</span>' +
+                            '</div>';
+                        timelineEl.appendChild(item);
+                    });
+                    if (data.timeline.length > 10) {
+                        var more = document.createElement('div');
+                        more.className = 'timeline-more';
+                        more.textContent = '还有 ' + (data.timeline.length - 10) + ' 条记录';
+                        timelineEl.appendChild(more);
+                    }
+                } else {
+                    timelineEl.innerHTML = '<div class="empty-hint">暂无到访记录</div>';
+                }
+            })
+            .catch(function(err) { console.error('Failed to load visit stats:', err); });
+    })();
+    {% endif %}
+    </script>
+{% endblock %}

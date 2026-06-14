@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+
+{% block title %}钓点管理 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🎣 钓点管理</h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('add_spot') }}" class="btn btn-primary">+ 新增钓点</a>
+            <button class="btn btn-secondary" id="toggle-map-btn" onclick="toggleMapView()">🗺️ 地图模式</button>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">筛选：</span>
+            <a href="{{ url_for('spots_list', filter='all', sort=sort_by) }}" class="filter-btn {% if filter_type == 'all' %}active{% endif %}">全部</a>
+            <a href="{{ url_for('spots_list', filter='favorite', sort=sort_by) }}" class="filter-btn {% if filter_type == 'favorite' %}active{% endif %}">⭐ 已收藏</a>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">排序：</span>
+            <a href="{{ url_for('spots_list', filter=filter_type, sort='name') }}" class="filter-btn {% if sort_by == 'name' %}active{% endif %}">按名称</a>
+            <a href="{{ url_for('spots_list', filter=filter_type, sort='rating') }}" class="filter-btn {% if sort_by == 'rating' %}active{% endif %}">按评分</a>
+            <a href="{{ url_for('spots_list', filter=filter_type, sort='visit') }}" class="filter-btn {% if sort_by == 'visit' %}active{% endif %}">按到访</a>
+            <a href="{{ url_for('spots_list', filter=filter_type, sort='recent') }}" class="filter-btn {% if sort_by == 'recent' %}active{% endif %}">最近添加</a>
+        </div>
+    </div>
+
+    <div id="spots-map-container" class="spots-map-container" style="display: none;">
+        <div id="spots-overview-map" class="overview-map"></div>
+    </div>
+
+    <div id="spots-list-container">
+    {% if spots %}
+        <div class="spot-grid">
+            {% for spot in spots %}
+                <div class="spot-card">
+                    <div class="spot-card-header">
+                        <div class="spot-title-row">
+                            <h3 class="spot-name">
+                                <a href="{{ url_for('spot_detail', spot_id=spot['id']) }}">{{ spot['name'] }}</a>
+                            </h3>
+                            <button class="favorite-btn {% if spot['is_favorite'] %}favorited{% endif %}"
+                                    data-spot-id="{{ spot['id'] }}"
+                                    onclick="toggleFavorite(this)">
+                                {% if spot['is_favorite'] %}★{% else %}☆{% endif %}
+                            </button>
+                        </div>
+                        <div class="spot-stats">
+                            <div class="spot-rating">
+                                {% if spot['avg_rating'] > 0 %}
+                                    <span class="rating-stars">
+                                        {% for i in range(5) %}
+                                            {% if i < spot['avg_rating']|round(0, 'floor') %}★
+                                            {% else %}☆{% endif %}
+                                        {% endfor %}
+                                    </span>
+                                    <span class="rating-value">{{ spot['avg_rating'] }}</span>
+                                    <span class="rating-count">({{ spot['rating_count'] }})</span>
+                                {% else %}
+                                    <span class="no-rating">暂无评分</span>
+                                {% endif %}
+                            </div>
+                            <div class="spot-visits">
+                                📍 到访 {{ spot['visit_count'] }} 次
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if spot['description'] %}
+                        <div class="spot-desc">{{ spot['description'][:80] }}{% if spot['description']|length > 80 %}...{% endif %}</div>
+                    {% endif %}
+
+                    {% if spot['address'] or spot['latitude'] %}
+                        <div class="spot-location">
+                            {% if spot['address'] %}
+                                <span class="spot-address">🏠 {{ spot['address'] }}</span>
+                            {% endif %}
+                            {% if spot['latitude'] and spot['longitude'] %}
+                                <span class="spot-coords">
+                                    📌 {{ '%.6f'|format(spot['latitude']) }}, {{ '%.6f'|format(spot['longitude']) }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+
+                    <div class="spot-card-footer">
+                        <a href="{{ url_for('spot_detail', spot_id=spot['id']) }}" class="btn btn-small">查看详情</a>
+                        <a href="{{ url_for('edit_spot', spot_id=spot['id']) }}" class="btn btn-small">编辑</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>{% if filter_type == 'favorite' %}还没有收藏的钓点哦！{% else %}还没有添加任何钓点，快去添加第一个吧！{% endif %}</p>
+            <a href="{{ url_for('add_spot') }}" class="btn btn-primary">+ 新增钓点</a>
+        </div>
+    {% endif %}
+    </div>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    function toggleFavorite(btn) {
+        const spotId = btn.dataset.spotId;
+        fetch(`/spots/${spotId}/favorite`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                if (data.is_favorite) {
+                    btn.classList.add('favorited');
+                    btn.textContent = '★';
+                } else {
+                    btn.classList.remove('favorited');
+                    btn.textContent = '☆';
+                }
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    var overviewMap = null;
+    var mapVisible = false;
+
+    function toggleMapView() {
+        var mapContainer = document.getElementById('spots-map-container');
+        var listContainer = document.getElementById('spots-list-container');
+        var btn = document.getElementById('toggle-map-btn');
+
+        if (mapVisible) {
+            mapContainer.style.display = 'none';
+            listContainer.style.display = '';
+            btn.textContent = '🗺️ 地图模式';
+            mapVisible = false;
+        } else {
+            mapContainer.style.display = '';
+            listContainer.style.display = 'none';
+            btn.textContent = '📋 列表模式';
+            mapVisible = true;
+
+            if (!overviewMap) {
+                initOverviewMap();
+            } else {
+                setTimeout(function() { overviewMap.invalidateSize(); }, 50);
+            }
+        }
+    }
+
+    function initOverviewMap() {
+        overviewMap = L.map('spots-overview-map').setView([35.86, 104.19], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(overviewMap);
+
+        fetch('/api/spots/map')
+            .then(r => r.json())
+            .then(spots => {
+                if (spots.length === 0) return;
+
+                var markers = [];
+                spots.forEach(function(s) {
+                    var icon = s.is_favorite
+                        ? L.divIcon({ className: 'map-marker-fav', html: '⭐', iconSize: [28, 28], iconAnchor: [14, 14] })
+                        : L.divIcon({ className: 'map-marker', html: '🎣', iconSize: [24, 24], iconAnchor: [12, 12] });
+
+                    var ratingText = s.avg_rating > 0
+                        ? ' ⭐ ' + s.avg_rating + '分 (' + s.avg_rating + ')'
+                        : ' 暂无评分';
+                    var popup = '<strong><a href="/spots/' + s.id + '">' + s.name + '</a></strong>' +
+                                '<br>📍 到访 ' + s.visit_count + ' 次' +
+                                '<br>' + ratingText;
+
+                    var marker = L.marker([s.lat, s.lng], { icon: icon })
+                        .bindPopup(popup)
+                        .addTo(overviewMap);
+                    markers.push(marker);
+                });
+
+                if (markers.length === 1) {
+                    overviewMap.setView([spots[0].lat, spots[0].lng], 13);
+                } else {
+                    var group = L.featureGroup(markers);
+                    overviewMap.fitBounds(group.getBounds().pad(0.1));
+                }
+            })
+            .catch(err => console.error('Failed to load map data:', err));
+
+        setTimeout(function() { overviewMap.invalidateSize(); }, 100);
+    }
+    </script>
+{% endblock %}
