@@ -469,6 +469,111 @@ def delete_spot(spot_id):
     return redirect(url_for('spots_list'))
 
 
+def parse_harvest_value(harvest_str):
+    if not harvest_str:
+        return 0
+    harvest_str = harvest_str.strip()
+    if harvest_str.startswith('h') or harvest_str.startswith('H'):
+        try:
+            return int(harvest_str[1:])
+        except ValueError:
+            return 1
+    try:
+        return int(harvest_str)
+    except ValueError:
+        try:
+            return float(harvest_str)
+        except ValueError:
+            return 1
+
+
+@app.route('/monthly-report')
+def monthly_report():
+    conn = get_db()
+
+    months = conn.execute('''
+        SELECT DISTINCT strftime('%Y-%m', created_at) as month
+        FROM fishing_logs
+        ORDER BY month DESC
+    ''').fetchall()
+    month_list = [row['month'] for row in months]
+
+    selected_month = request.args.get('month', month_list[0] if month_list else None)
+
+    species_stats = []
+    spot_stats = []
+    total_logs = 0
+    total_harvest = 0
+    total_spots = 0
+    total_species = 0
+
+    if selected_month:
+        species_rows = conn.execute('''
+            SELECT fish_species, COUNT(*) as log_count
+            FROM fishing_logs
+            WHERE strftime('%Y-%m', created_at) = ?
+            GROUP BY fish_species
+            ORDER BY log_count DESC
+        ''', (selected_month,)).fetchall()
+
+        total_logs = sum(r['log_count'] for r in species_rows)
+        total_species = len(species_rows)
+
+        species_stats = []
+        for row in species_rows:
+            percentage = round((row['log_count'] / total_logs * 100), 1) if total_logs > 0 else 0
+            species_stats.append({
+                'species': row['fish_species'],
+                'count': row['log_count'],
+                'percentage': percentage
+            })
+
+        spot_rows = conn.execute('''
+            SELECT spot, COUNT(*) as log_count
+            FROM fishing_logs
+            WHERE strftime('%Y-%m', created_at) = ?
+            GROUP BY spot
+            ORDER BY log_count DESC
+        ''', (selected_month,)).fetchall()
+
+        total_spots = len(spot_rows)
+
+        all_logs = conn.execute('''
+            SELECT harvest FROM fishing_logs
+            WHERE strftime('%Y-%m', created_at) = ?
+        ''', (selected_month,)).fetchall()
+
+        total_harvest = sum(parse_harvest_value(log['harvest']) for log in all_logs)
+
+        spot_stats = []
+        for idx, row in enumerate(spot_rows, 1):
+            spot_logs = conn.execute('''
+                SELECT harvest FROM fishing_logs
+                WHERE spot = ? AND strftime('%Y-%m', created_at) = ?
+            ''', (row['spot'], selected_month)).fetchall()
+            spot_harvest = sum(parse_harvest_value(log['harvest']) for log in spot_logs)
+            spot_stats.append({
+                'rank': idx,
+                'spot': row['spot'],
+                'log_count': row['log_count'],
+                'harvest_count': spot_harvest
+            })
+
+    conn.close()
+
+    return render_template(
+        'monthly_report.html',
+        month_list=month_list,
+        selected_month=selected_month,
+        species_stats=species_stats,
+        spot_stats=spot_stats,
+        total_logs=total_logs,
+        total_harvest=total_harvest,
+        total_spots=total_spots,
+        total_species=total_species
+    )
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='127.0.0.1', port=5000)

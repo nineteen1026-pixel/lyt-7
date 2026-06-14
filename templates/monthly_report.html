@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block title %}月度报告 - 钓点日志{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>📊 月度报告</h2>
+</div>
+
+{% if month_list %}
+<div class="month-selector">
+    <label class="month-label">选择月份：</label>
+    <div class="month-buttons">
+        {% for month in month_list %}
+        <a href="{{ url_for('monthly_report', month=month) }}"
+           class="month-btn {% if month == selected_month %}active{% endif %}">
+            {{ month }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+
+{% if selected_month %}
+<div class="report-stats">
+    <div class="stat-card">
+        <div class="stat-icon">📝</div>
+        <div class="stat-info">
+            <div class="stat-value">{{ total_logs }}</div>
+            <div class="stat-label">总记录数</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🐟</div>
+        <div class="stat-info">
+            <div class="stat-value">{{ total_harvest }}</div>
+            <div class="stat-label">总出鱼量</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">📍</div>
+        <div class="stat-info">
+            <div class="stat-value">{{ total_spots }}</div>
+            <div class="stat-label">钓点数量</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🎣</div>
+        <div class="stat-info">
+            <div class="stat-value">{{ total_species }}</div>
+            <div class="stat-label">鱼种数量</div>
+        </div>
+    </div>
+</div>
+
+<div class="report-section">
+    <h3>🐟 鱼种占比</h3>
+    {% if species_stats %}
+    <div class="species-chart">
+        {% set colors = ['#667eea', '#764ba2', '#f6ad55', '#68d391', '#63b3ed', '#fc8181', '#b794f4', '#4fd1c5', '#f687b3', '#ecc94b'] %}
+        {% for item in species_stats %}
+        <div class="species-bar-row">
+            <div class="species-name">{{ item.species }}</div>
+            <div class="species-bar-track">
+                <div class="species-bar-fill" 
+                     style="width: {{ item.percentage }}%; background: {{ colors[loop.index0 % colors|length] }};">
+                </div>
+            </div>
+            <div class="species-stats">
+                <span class="species-count">{{ item.count }} 条</span>
+                <span class="species-pct">{{ item.percentage }}%</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>暂无鱼种数据</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="report-section">
+    <h3>🏆 钓点出鱼量排行</h3>
+    {% if spot_stats %}
+    <div class="spot-ranking">
+        {% for spot in spot_stats %}
+        <div class="ranking-item">
+            <div class="ranking-rank {% if spot.rank == 1 %}rank-gold{% elif spot.rank == 2 %}rank-silver{% elif spot.rank == 3 %}rank-bronze{% endif %}">
+                {% if spot.rank == 1 %}🥇{% elif spot.rank == 2 %}🥈{% elif spot.rank == 3 %}🥉{% else %}{{ spot.rank }}{% endif %}
+            </div>
+            <div class="ranking-info">
+                <div class="ranking-spot">{{ spot.spot }}</div>
+                <div class="ranking-bar-track">
+                    <div class="ranking-bar-fill" 
+                         style="width: {{ (spot.harvest_count / spot_stats[0].harvest_count * 100) if spot_stats[0].harvest_count > 0 else 0 }}%;">
+                    </div>
+                </div>
+            </div>
+            <div class="ranking-stats">
+                <div class="ranking-harvest">{{ spot.harvest_count }} 尾</div>
+                <div class="ranking-logs">{{ spot.log_count }} 次垂钓</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>暂无钓点数据</p>
+    </div>
+    {% endif %}
+</div>
+
+{% endif %}
+{% else %}
+<div class="empty-state">
+    <p>暂无垂钓记录，快去添加第一条记录吧！</p>
+    <a href="{{ url_for('add_log') }}" class="btn btn-primary">新增记录</a>
+</div>
+{% endif %}
+{% endblock %}
