@@ -1943,3 +1943,154 @@ footer {
         font-size: 24px;
     }
 }
+
+.search-form {
+    margin-bottom: 25px;
+}
+
+.search-filter-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 20px;
+}
+
+.search-filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.search-filter-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 8px;
+}
+
+.date-range-inputs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.date-range-inputs input[type="date"] {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+    min-width: 0;
+}
+
+.date-range-inputs input[type="date"]:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.date-separator {
+    font-size: 16px;
+    color: #a0aec0;
+    font-weight: 500;
+    flex-shrink: 0;
+}
+
+.search-select {
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #fff;
+    color: #2d3748;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+}
+
+.search-select:hover {
+    border-color: #cbd5e0;
+}
+
+.search-select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.search-actions {
+    display: flex;
+    gap: 10px;
+    padding-top: 5px;
+    border-top: 1px solid #edf2f7;
+}
+
+.search-result-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 12px 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.search-result-count {
+    font-size: 15px;
+    color: #4a5568;
+}
+
+.search-result-count strong {
+    color: #667eea;
+    font-size: 18px;
+}
+
+.search-filter-tag {
+    display: inline-block;
+    padding: 4px 12px;
+    background: #edf2f7;
+    border-radius: 16px;
+    font-size: 13px;
+    color: #4a5568;
+}
+
+.search-hint {
+    text-align: center;
+    padding: 50px 20px;
+    color: #718096;
+    font-size: 15px;
+    background: #f7fafc;
+    border-radius: 10px;
+    border: 2px dashed #e2e8f0;
+}
+
+.search-hint p {
+    margin: 0;
+}
+
+@media (max-width: 768px) {
+    .search-filter-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .date-range-inputs {
+        flex-direction: column;
+    }
+
+    .date-separator {
+        display: none;
+    }
+
+    .date-range-inputs input[type="date"] {
+        width: 100%;
+    }
+
+    .search-actions {
+        flex-direction: column;
+    }
+
+    .search-actions .btn {
+        text-align: center;
+    }
+}

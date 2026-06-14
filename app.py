@@ -1,3 +1,5 @@
+import csv
+import io
 import os
 import re
 import sqlite3
@@ -5,7 +7,7 @@ import urllib.request
 import urllib.parse
 import json
 from datetime import datetime
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response
 
 app = Flask(__name__)
 app.secret_key = 'fishing_log_secret_key'
@@ -930,6 +932,130 @@ def api_weather_history():
         }), 500
     finally:
         conn.close()
+
+
+@app.route('/search')
+def search_logs():
+    conn = get_db()
+
+    spot_list = [row['spot'] for row in conn.execute('SELECT DISTINCT spot FROM fishing_logs ORDER BY spot').fetchall()]
+    species_list = [row['fish_species'] for row in conn.execute('SELECT DISTINCT fish_species FROM fishing_logs ORDER BY fish_species').fetchall()]
+
+    date_start = request.args.get('date_start', '').strip()
+    date_end = request.args.get('date_end', '').strip()
+    selected_spot = request.args.get('spot', '').strip()
+    selected_species = request.args.get('fish_species', '').strip()
+
+    conditions = []
+    params = []
+
+    if date_start:
+        conditions.append('created_at >= ?')
+        params.append(date_start)
+    if date_end:
+        conditions.append('created_at <= ?')
+        params.append(date_end)
+    if selected_spot:
+        conditions.append('spot = ?')
+        params.append(selected_spot)
+    if selected_species:
+        conditions.append('fish_species = ?')
+        params.append(selected_species)
+
+    logs = []
+    if conditions:
+        where_clause = ' AND '.join(conditions)
+        logs = conn.execute(
+            f'SELECT * FROM fishing_logs WHERE {where_clause} ORDER BY created_at DESC, id DESC',
+            params
+        ).fetchall()
+
+    conn.close()
+
+    has_filter = bool(date_start or date_end or selected_spot or selected_species)
+
+    return render_template(
+        'search.html',
+        spot_list=spot_list,
+        species_list=species_list,
+        date_start=date_start,
+        date_end=date_end,
+        selected_spot=selected_spot,
+        selected_species=selected_species,
+        logs=logs,
+        has_filter=has_filter
+    )
+
+
+@app.route('/search/export')
+def export_search_csv():
+    conn = get_db()
+
+    date_start = request.args.get('date_start', '').strip()
+    date_end = request.args.get('date_end', '').strip()
+    selected_spot = request.args.get('spot', '').strip()
+    selected_species = request.args.get('fish_species', '').strip()
+
+    conditions = []
+    params = []
+
+    if date_start:
+        conditions.append('created_at >= ?')
+        params.append(date_start)
+    if date_end:
+        conditions.append('created_at <= ?')
+        params.append(date_end)
+    if selected_spot:
+        conditions.append('spot = ?')
+        params.append(selected_spot)
+    if selected_species:
+        conditions.append('fish_species = ?')
+        params.append(selected_species)
+
+    if not conditions:
+        conn.close()
+        flash('请至少设置一个筛选条件再导出！', 'error')
+        return redirect(url_for('search_logs'))
+
+    where_clause = ' AND '.join(conditions)
+    logs = conn.execute(
+        f'SELECT * FROM fishing_logs WHERE {where_clause} ORDER BY created_at DESC, id DESC',
+        params
+    ).fetchall()
+    conn.close()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['日期', '钓点', '天气', '温度', '湿度', '风力', '水位', '饵料', '鱼种', '收获', '下次策略'])
+    for log in logs:
+        writer.writerow([
+            log['created_at'],
+            log['spot'],
+            log['weather'],
+            log['temperature'] or '',
+            log['humidity'] or '',
+            log['wind'] or '',
+            log['water_level'],
+            log['bait'],
+            log['fish_species'],
+            log['harvest'],
+            log['next_strategy'] or ''
+        ])
+
+    filename_parts = []
+    if date_start or date_end:
+        filename_parts.append(f"{date_start or '起'}~{date_end or '止'}")
+    if selected_spot:
+        filename_parts.append(selected_spot)
+    if selected_species:
+        filename_parts.append(selected_species)
+    filename = '_'.join(filename_parts) if filename_parts else 'search_results'
+
+    return Response(
+        '\ufeff' + output.getvalue(),
+        mimetype='text/csv; charset=utf-8-sig',
+        headers={'Content-Disposition': f'attachment; filename={urllib.parse.quote(filename)}.csv'}
+    )
 
 
 if __name__ == '__main__':
