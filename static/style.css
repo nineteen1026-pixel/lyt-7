@@ -150,6 +150,120 @@ main {
     background: #e2e8f0;
 }
 
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 15px 0;
+    margin-bottom: 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.sort-group,
+.per-page-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sort-group label,
+.per-page-group label {
+    font-size: 14px;
+    color: #4a5568;
+    font-weight: 500;
+}
+
+.sort-group select,
+.per-page-group select {
+    padding: 7px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 14px;
+    background: #fff;
+    color: #2d3748;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.sort-group select:hover,
+.per-page-group select:hover {
+    border-color: #cbd5e0;
+}
+
+.sort-group select:focus,
+.per-page-group select:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.total-info {
+    font-size: 13px;
+    color: #718096;
+    padding: 6px 12px;
+    background: #f7fafc;
+    border-radius: 6px;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 25px 0 10px;
+    margin-top: 15px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.page-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+    color: #4a5568;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.page-btn:hover:not(.disabled):not(.active) {
+    background: #edf2f7;
+    border-color: #cbd5e0;
+    color: #2d3748;
+}
+
+.page-btn.active {
+    background: #667eea;
+    border-color: #667eea;
+    color: white;
+    cursor: default;
+}
+
+.page-btn.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    color: #a0aec0;
+}
+
+.page-ellipsis {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 6px;
+    color: #a0aec0;
+    font-size: 16px;
+}
+
 .log-list {
     display: grid;
     gap: 15px;
@@ -964,6 +1078,32 @@ footer {
 
     .big-rating-value {
         font-size: 36px;
+    }
+
+    .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .sort-group,
+    .per-page-group {
+        width: 100%;
+    }
+
+    .sort-group select,
+    .per-page-group select {
+        flex: 1;
+    }
+
+    .total-info {
+        text-align: center;
+    }
+
+    .page-btn {
+        min-width: 34px;
+        height: 34px;
+        padding: 0 10px;
+        font-size: 13px;
     }
 
     .detail-header {

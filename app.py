@@ -57,10 +57,44 @@ def init_db():
 
 @app.route('/')
 def index():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    sort_by = request.args.get('sort', 'date_desc')
+
+    per_page = max(10, min(per_page, 100))
+
+    sort_options = {
+        'date_desc': ('created_at DESC, id DESC', '日期降序'),
+        'date_asc': ('created_at ASC, id ASC', '日期升序'),
+        'spot_desc': ('spot DESC, created_at DESC, id DESC', '钓点降序'),
+        'spot_asc': ('spot ASC, created_at DESC, id DESC', '钓点升序'),
+    }
+    order_clause, sort_label = sort_options.get(sort_by, sort_options['date_desc'])
+
     conn = get_db()
-    logs = conn.execute('SELECT * FROM fishing_logs ORDER BY created_at DESC, id DESC LIMIT 20').fetchall()
+
+    count_result = conn.execute('SELECT COUNT(*) as total FROM fishing_logs').fetchone()
+    total = count_result['total']
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * per_page
+
+    logs = conn.execute(
+        f'SELECT * FROM fishing_logs ORDER BY {order_clause} LIMIT ? OFFSET ?',
+        (per_page, offset)
+    ).fetchall()
     conn.close()
-    return render_template('index.html', logs=logs)
+
+    return render_template(
+        'index.html',
+        logs=logs,
+        page=page,
+        per_page=per_page,
+        total=total,
+        total_pages=total_pages,
+        sort_by=sort_by,
+        sort_label=sort_label
+    )
 
 
 @app.route('/add', methods=['GET', 'POST'])

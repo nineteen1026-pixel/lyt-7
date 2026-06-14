@@ -9,6 +9,30 @@
     </div>
 
     {% if logs %}
+        <div class="toolbar">
+            <div class="sort-group">
+                <label>排序方式：</label>
+                <select id="sortSelect" onchange="handleSortChange()">
+                    <option value="date_desc" {% if sort_by == 'date_desc' %}selected{% endif %}>日期（最新优先）</option>
+                    <option value="date_asc" {% if sort_by == 'date_asc' %}selected{% endif %}>日期（最早优先）</option>
+                    <option value="spot_asc" {% if sort_by == 'spot_asc' %}selected{% endif %}>钓点（A-Z）</option>
+                    <option value="spot_desc" {% if sort_by == 'spot_desc' %}selected{% endif %}>钓点（Z-A）</option>
+                </select>
+            </div>
+            <div class="per-page-group">
+                <label>每页显示：</label>
+                <select id="perPageSelect" onchange="handlePerPageChange()">
+                    <option value="10" {% if per_page == 10 %}selected{% endif %}>10 条</option>
+                    <option value="20" {% if per_page == 20 %}selected{% endif %}>20 条</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50 条</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100 条</option>
+                </select>
+            </div>
+            <div class="total-info">
+                共 {{ total }} 条记录，第 {{ page }} / {{ total_pages }} 页
+            </div>
+        </div>
+
         <div class="log-list">
             {% for log in logs %}
                 <div class="log-card">
@@ -44,10 +68,60 @@
                 </div>
             {% endfor %}
         </div>
+
+        {% if total_pages > 1 %}
+            <div class="pagination">
+                {% if page > 1 %}
+                    <a href="{{ url_for('index', page=1, sort=sort_by, per_page=per_page) }}" class="page-btn">&laquo; 首页</a>
+                    <a href="{{ url_for('index', page=page-1, sort=sort_by, per_page=per_page) }}" class="page-btn">&lsaquo; 上一页</a>
+                {% else %}
+                    <span class="page-btn disabled">&laquo; 首页</span>
+                    <span class="page-btn disabled">&lsaquo; 上一页</span>
+                {% endif %}
+
+                {% set start_page = [page - 2, 1] | max %}
+                {% set end_page = [page + 2, total_pages] | min %}
+                {% if start_page > 1 %}
+                    <span class="page-ellipsis">...</span>
+                {% endif %}
+                {% for p in range(start_page, end_page + 1) %}
+                    {% if p == page %}
+                        <span class="page-btn active">{{ p }}</span>
+                    {% else %}
+                        <a href="{{ url_for('index', page=p, sort=sort_by, per_page=per_page) }}" class="page-btn">{{ p }}</a>
+                    {% endif %}
+                {% endfor %}
+                {% if end_page < total_pages %}
+                    <span class="page-ellipsis">...</span>
+                {% endif %}
+
+                {% if page < total_pages %}
+                    <a href="{{ url_for('index', page=page+1, sort=sort_by, per_page=per_page) }}" class="page-btn">下一页 &rsaquo;</a>
+                    <a href="{{ url_for('index', page=total_pages, sort=sort_by, per_page=per_page) }}" class="page-btn">末页 &raquo;</a>
+                {% else %}
+                    <span class="page-btn disabled">下一页 &rsaquo;</span>
+                    <span class="page-btn disabled">末页 &raquo;</span>
+                {% endif %}
+            </div>
+        {% endif %}
     {% else %}
         <div class="empty-state">
             <p>还没有任何记录，快去添加第一条吧！</p>
             <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>
         </div>
     {% endif %}
+
+    <script>
+        function handleSortChange() {
+            const sortValue = document.getElementById('sortSelect').value;
+            const perPage = document.getElementById('perPageSelect').value;
+            window.location.href = `{{ url_for('index') }}?sort=${sortValue}&per_page=${perPage}`;
+        }
+
+        function handlePerPageChange() {
+            const sortValue = document.getElementById('sortSelect').value;
+            const perPage = document.getElementById('perPageSelect').value;
+            window.location.href = `{{ url_for('index') }}?sort=${sortValue}&per_page=${perPage}`;
+        }
+    </script>
 {% endblock %}
