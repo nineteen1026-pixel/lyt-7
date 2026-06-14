@@ -1826,3 +1826,120 @@ footer {
         flex: 1;
     }
 }
+
+.summary-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+    color: white;
+}
+
+.summary-title {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 15px;
+    opacity: 0.95;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.summary-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 10px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+}
+
+.summary-item:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.summary-icon {
+    font-size: 28px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.summary-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.summary-label {
+    font-size: 12px;
+    opacity: 0.85;
+    margin-bottom: 4px;
+}
+
+.summary-value {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.bait-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 12px;
+    font-size: 12px;
+    margin-right: 4px;
+    margin-bottom: 4px;
+    font-weight: 500;
+}
+
+.no-data {
+    opacity: 0.7;
+    font-weight: 400;
+}
+
+.best-harvest-link {
+    color: white;
+    text-decoration: none;
+    display: block;
+}
+
+.best-harvest-link:hover {
+    text-decoration: underline;
+}
+
+.best-harvest-text {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fef08a;
+    margin-bottom: 2px;
+}
+
+.best-harvest-meta {
+    display: block;
+    font-size: 11px;
+    opacity: 0.8;
+    font-weight: 400;
+}
+
+@media (max-width: 768px) {
+    .summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-item {
+        padding: 12px;
+    }
+
+    .summary-icon {
+        font-size: 24px;
+    }
+}

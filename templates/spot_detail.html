@@ -23,6 +23,54 @@
         </div>
     </div>
 
+    {% if spot['visit_count'] > 0 %}
+    <div class="summary-card">
+        <div class="summary-title">📊 钓点汇总</div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-icon">📍</div>
+                <div class="summary-content">
+                    <div class="summary-label">到访次数</div>
+                    <div class="summary-value">{{ spot['visit_count'] }} 次</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">🎣</div>
+                <div class="summary-content">
+                    <div class="summary-label">常用饵料</div>
+                    <div class="summary-value">
+                        {% if bait_stats %}
+                            {% for bait in bait_stats %}
+                                <span class="bait-tag">{{ bait['name'] }} ({{ bait['count'] }}次)</span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="no-data">暂无数据</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">🏆</div>
+                <div class="summary-content">
+                    <div class="summary-label">最佳收获</div>
+                    <div class="summary-value">
+                        {% if best_harvest %}
+                            <a href="{{ url_for('log_detail', log_id=best_harvest['id']) }}" class="best-harvest-link">
+                                <span class="best-harvest-text">{{ best_harvest['harvest'] }}</span>
+                                <span class="best-harvest-meta">
+                                    {{ best_harvest['fish_species'] }} · {{ best_harvest['created_at'] }}
+                                </span>
+                            </a>
+                        {% else %}
+                            <span class="no-data">暂无数据</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="detail-card">
         <div class="detail-header">
             <div class="spot-rating-large">

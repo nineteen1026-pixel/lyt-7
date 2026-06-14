@@ -323,6 +323,38 @@ def add_spot():
     return render_template('spot_form.html', spot=None)
 
 
+def get_spot_bait_stats(conn, spot_name):
+    rows = conn.execute('''
+        SELECT bait, COUNT(*) as use_count
+        FROM fishing_logs
+        WHERE spot = ? AND bait IS NOT NULL AND bait != ''
+        GROUP BY bait
+        ORDER BY use_count DESC
+        LIMIT 3
+    ''', (spot_name,)).fetchall()
+    return [{'name': r['bait'], 'count': r['use_count']} for r in rows]
+
+
+def get_spot_best_harvest(conn, spot_name):
+    rows = conn.execute('''
+        SELECT id, harvest, created_at, fish_species, bait
+        FROM fishing_logs
+        WHERE spot = ? AND harvest IS NOT NULL AND harvest != ''
+        ORDER BY id DESC
+    ''', (spot_name,)).fetchall()
+
+    best_log = None
+    best_value = -1
+    for row in rows:
+        value = parse_harvest_value(row['harvest'])
+        if value > best_value:
+            best_value = value
+            best_log = dict(row)
+            best_log['harvest_value'] = value
+
+    return best_log
+
+
 @app.route('/spots/<int:spot_id>')
 def spot_detail(spot_id):
     conn = get_db()
@@ -339,6 +371,9 @@ def spot_detail(spot_id):
     spot_dict['avg_rating'] = rating_info['avg_rating']
     spot_dict['rating_count'] = rating_info['rating_count']
 
+    bait_stats = get_spot_bait_stats(conn, spot['name'])
+    best_harvest = get_spot_best_harvest(conn, spot['name'])
+
     ratings = conn.execute(
         'SELECT * FROM spot_ratings WHERE spot_id = ? ORDER BY created_at DESC',
         (spot_id,)
@@ -350,7 +385,8 @@ def spot_detail(spot_id):
     ).fetchall()
 
     conn.close()
-    return render_template('spot_detail.html', spot=spot_dict, ratings=ratings, related_logs=related_logs)
+    return render_template('spot_detail.html', spot=spot_dict, ratings=ratings, related_logs=related_logs,
+                           bait_stats=bait_stats, best_harvest=best_harvest)
 
 
 @app.route('/spots/<int:spot_id>/edit', methods=['GET', 'POST'])
@@ -524,9 +560,9 @@ def parse_harvest_value(harvest_str):
         if kw.lower() in lower_str:
             return 0
 
-    match = re.search(r'(\d+(?:\.\d+)?)', harvest_str)
-    if match:
-        num_str = match.group(1)
+    matches = re.findall(r'(\d+(?:\.\d+)?)', harvest_str)
+    if matches:
+        num_str = matches[-1]
         try:
             if '.' in num_str:
                 return float(num_str)
