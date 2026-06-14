@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+
+{% block title %}饵料库管理 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🐛 饵料库管理</h2>
+        <a href="{{ url_for('add_bait') }}" class="btn btn-primary">+ 新增饵料</a>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">排序：</span>
+            <a href="{{ url_for('baits_list', sort='name') }}" class="filter-btn {% if sort_by == 'name' %}active{% endif %}">按名称</a>
+            <a href="{{ url_for('baits_list', sort='usage') }}" class="filter-btn {% if sort_by == 'usage' %}active{% endif %}">按使用次数</a>
+            <a href="{{ url_for('baits_list', sort='success') }}" class="filter-btn {% if sort_by == 'success' %}active{% endif %}">按上鱼率</a>
+            <a href="{{ url_for('baits_list', sort='harvest') }}" class="filter-btn {% if sort_by == 'harvest' %}active{% endif %}">按总收获</a>
+            <a href="{{ url_for('baits_list', sort='avg_harvest') }}" class="filter-btn {% if sort_by == 'avg_harvest' %}active{% endif %}">按平均收获</a>
+        </div>
+    </div>
+
+    {% if baits %}
+        <div class="bait-ranking">
+            <h3>🏆 上鱼率排行</h3>
+            <table class="ranking-table">
+                <thead>
+                    <tr>
+                        <th style="width: 60px;">排名</th>
+                        <th>饵料名称</th>
+                        <th style="width: 100px;">类型</th>
+                        <th style="width: 100px;">品牌</th>
+                        <th style="width: 90px;">使用次数</th>
+                        <th style="width: 90px;">有收获次数</th>
+                        <th style="width: 100px;">上鱼率</th>
+                        <th style="width: 100px;">总收获</th>
+                        <th style="width: 100px;">平均收获</th>
+                        <th style="width: 140px;">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bait in baits %}
+                        <tr>
+                            <td>
+                                {% if loop.index == 1 %}
+                                    <span class="rank-badge gold">🥇</span>
+                                {% elif loop.index == 2 %}
+                                    <span class="rank-badge silver">🥈</span>
+                                {% elif loop.index == 3 %}
+                                    <span class="rank-badge bronze">🥉</span>
+                                {% else %}
+                                    <span class="rank-badge">{{ loop.index }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="bait-name-cell">
+                                <strong>{{ bait.name }}</strong>
+                                {% if bait.description %}
+                                    <div class="bait-desc">{{ bait.description }}</div>
+                                {% endif %}
+                            </td>
+                            <td>{{ bait.type or '-' }}</td>
+                            <td>{{ bait.brand or '-' }}</td>
+                            <td>{{ bait.use_count }} 次</td>
+                            <td>{{ bait.success_count }} 次</td>
+                            <td>
+                                <div class="success-rate-bar">
+                                    <div class="success-rate-fill" style="width: {{ bait.success_rate }}%;"></div>
+                                    <span class="success-rate-text">{{ bait.success_rate }}%</span>
+                                </div>
+                            </td>
+                            <td>{{ bait.total_harvest }}</td>
+                            <td>{{ bait.avg_harvest }}</td>
+                            <td>
+                                <a href="{{ url_for('edit_bait', bait_id=bait.id) }}" class="btn btn-small">编辑</a>
+                                <form method="POST" action="{{ url_for('delete_bait', bait_id=bait.id) }}" style="display: inline;" onsubmit="return confirm('确定要删除这个饵料吗？');">
+                                    <button type="submit" class="btn btn-small btn-danger">删除</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>还没有添加任何饵料，快去添加第一个吧！</p>
+            <a href="{{ url_for('add_bait') }}" class="btn btn-primary">+ 新增饵料</a>
+        </div>
+    {% endif %}
+
+    {% if unmanaged_baits %}
+        <div class="unmanaged-baits">
+            <h3>📋 历史记录中出现的饵料</h3>
+            <p>以下饵料出现在历史记录中但尚未纳入饵料库管理，可一键导入：</p>
+            <div class="unmanaged-list">
+                {% for bait_name in unmanaged_baits %}
+                    <div class="unmanaged-item">
+                        <span>{{ bait_name }}</span>
+                        <form method="POST" action="{{ url_for('import_bait', bait_name=bait_name) }}" style="display: inline;">
+                            <button type="submit" class="btn btn-small btn-success">导入</button>
+                        </form>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

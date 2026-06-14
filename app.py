@@ -52,6 +52,16 @@ def init_db():
             FOREIGN KEY (spot_id) REFERENCES fishing_spots(id) ON DELETE CASCADE
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS baits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT,
+            brand TEXT,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -100,6 +110,9 @@ def index():
 
 @app.route('/add', methods=['GET', 'POST'])
 def add_log():
+    conn = get_db()
+    bait_list = get_all_baits(conn)
+
     if request.method == 'POST':
         spot = request.form['spot'].strip()
         weather = request.form['weather'].strip()
@@ -113,17 +126,17 @@ def add_log():
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
         else:
-            conn = get_db()
             conn.execute('''
                 INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at))
             conn.commit()
-            conn.close()
             flash('记录添加成功！', 'success')
+            conn.close()
             return redirect(url_for('index'))
 
-    return render_template('add.html')
+    conn.close()
+    return render_template('add.html', bait_list=bait_list)
 
 
 @app.route('/log/<int:log_id>')
@@ -591,6 +604,163 @@ def monthly_report():
         total_spots=total_spots,
         total_species=total_species
     )
+
+
+def get_all_baits(conn):
+    baits = conn.execute('SELECT * FROM baits ORDER BY name').fetchall()
+    return [dict(b) for b in baits]
+
+
+def get_bait_usage_stats(conn, bait_name):
+    logs = conn.execute(
+        'SELECT harvest FROM fishing_logs WHERE bait = ?',
+        (bait_name,)
+    ).fetchall()
+    use_count = len(logs)
+    total_harvest = sum(parse_harvest_value(log['harvest']) for log in logs)
+    success_count = sum(1 for log in logs if parse_harvest_value(log['harvest']) > 0)
+    success_rate = round((success_count / use_count * 100), 1) if use_count > 0 else 0
+    avg_harvest = round((total_harvest / use_count), 2) if use_count > 0 else 0
+    return {
+        'use_count': use_count,
+        'total_harvest': total_harvest,
+        'success_count': success_count,
+        'success_rate': success_rate,
+        'avg_harvest': avg_harvest
+    }
+
+
+@app.route('/baits')
+def baits_list():
+    conn = get_db()
+    sort_by = request.args.get('sort', 'name')
+
+    baits = conn.execute('SELECT * FROM baits ORDER BY name').fetchall()
+
+    bait_stats = []
+    for bait in baits:
+        bait_dict = dict(bait)
+        stats = get_bait_usage_stats(conn, bait['name'])
+        bait_dict.update(stats)
+        bait_stats.append(bait_dict)
+
+    if sort_by == 'usage':
+        bait_stats.sort(key=lambda x: x['use_count'], reverse=True)
+    elif sort_by == 'success':
+        bait_stats.sort(key=lambda x: x['success_rate'], reverse=True)
+    elif sort_by == 'harvest':
+        bait_stats.sort(key=lambda x: x['total_harvest'], reverse=True)
+    elif sort_by == 'avg_harvest':
+        bait_stats.sort(key=lambda x: x['avg_harvest'], reverse=True)
+
+    all_baits_from_logs = conn.execute(
+        'SELECT DISTINCT bait FROM fishing_logs WHERE bait NOT IN (SELECT name FROM baits) ORDER BY bait'
+    ).fetchall()
+    unmanaged_baits = [row['bait'] for row in all_baits_from_logs if row['bait']]
+
+    conn.close()
+
+    return render_template(
+        'baits.html',
+        baits=bait_stats,
+        sort_by=sort_by,
+        unmanaged_baits=unmanaged_baits
+    )
+
+
+@app.route('/baits/add', methods=['GET', 'POST'])
+def add_bait():
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        bait_type = request.form['type'].strip()
+        brand = request.form['brand'].strip()
+        description = request.form['description'].strip()
+
+        if not name:
+            flash('请填写饵料名称！', 'error')
+        else:
+            conn = get_db()
+            try:
+                conn.execute('''
+                    INSERT INTO baits (name, type, brand, description)
+                    VALUES (?, ?, ?, ?)
+                ''', (name, bait_type or None, brand or None, description or None))
+                conn.commit()
+                flash('饵料添加成功！', 'success')
+                return redirect(url_for('baits_list'))
+            except sqlite3.IntegrityError:
+                flash('该饵料名称已存在！', 'error')
+            finally:
+                conn.close()
+
+    return render_template('bait_form.html', bait=None)
+
+
+@app.route('/baits/<int:bait_id>/edit', methods=['GET', 'POST'])
+def edit_bait(bait_id):
+    conn = get_db()
+    bait = conn.execute('SELECT * FROM baits WHERE id = ?', (bait_id,)).fetchone()
+
+    if bait is None:
+        conn.close()
+        flash('饵料不存在！', 'error')
+        return redirect(url_for('baits_list'))
+
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        bait_type = request.form['type'].strip()
+        brand = request.form['brand'].strip()
+        description = request.form['description'].strip()
+
+        if not name:
+            flash('请填写饵料名称！', 'error')
+        else:
+            try:
+                old_name = bait['name']
+                conn.execute('''
+                    UPDATE baits
+                    SET name = ?, type = ?, brand = ?, description = ?
+                    WHERE id = ?
+                ''', (name, bait_type or None, brand or None, description or None, bait_id))
+                conn.execute(
+                    'UPDATE fishing_logs SET bait = ? WHERE bait = ?',
+                    (name, old_name)
+                )
+                conn.commit()
+                flash('饵料更新成功！', 'success')
+                return redirect(url_for('baits_list'))
+            except sqlite3.IntegrityError:
+                flash('该饵料名称已存在！', 'error')
+            finally:
+                conn.close()
+    else:
+        conn.close()
+
+    return render_template('bait_form.html', bait=bait)
+
+
+@app.route('/baits/<int:bait_id>/delete', methods=['POST'])
+def delete_bait(bait_id):
+    conn = get_db()
+    conn.execute('DELETE FROM baits WHERE id = ?', (bait_id,))
+    conn.commit()
+    conn.close()
+    flash('饵料已删除！', 'success')
+    return redirect(url_for('baits_list'))
+
+
+@app.route('/baits/import/<bait_name>', methods=['POST'])
+def import_bait(bait_name):
+    conn = get_db()
+    try:
+        conn.execute('INSERT INTO baits (name) VALUES (?)', (bait_name,))
+        conn.commit()
+        flash(f'饵料"{bait_name}"已导入！', 'success')
+    except sqlite3.IntegrityError:
+        flash('该饵料已存在！', 'error')
+    finally:
+        conn.close()
+    return redirect(url_for('baits_list'))
 
 
 if __name__ == '__main__':

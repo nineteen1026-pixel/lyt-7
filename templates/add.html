@@ -31,7 +31,17 @@
 
             <div class="form-group">
                 <label for="bait">饵料 <span class="required">*</span></label>
-                <input type="text" id="bait" name="bait" placeholder="例如：蓝鲫+九一八" required>
+                <div class="bait-select-wrapper">
+                    <select id="bait-select" onchange="handleBaitSelect()">
+                        <option value="">-- 选择饵料 --</option>
+                        {% if bait_list %}
+                            {% for bait in bait_list %}
+                                <option value="{{ bait.name }}">{{ bait.name }}{% if bait.brand %} ({{ bait.brand }}){% endif %}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <input type="text" id="bait" name="bait" placeholder="选择或输入饵料" required>
+                </div>
             </div>
 
             <div class="form-group">
@@ -55,4 +65,15 @@
             <a href="{{ url_for('index') }}" class="btn btn-secondary">取消</a>
         </div>
     </form>
+
+    <script>
+    function handleBaitSelect() {
+        var select = document.getElementById('bait-select');
+        var input = document.getElementById('bait');
+        if (select.value) {
+            input.value = select.value;
+            select.value = '';
+        }
+    }
+    </script>
 {% endblock %}
