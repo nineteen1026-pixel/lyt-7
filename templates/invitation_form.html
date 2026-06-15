@@ -50,6 +50,12 @@
                        value="{{ invitation['total_cost'] if invitation and invitation['total_cost'] else '' }}">
             </div>
 
+            <div class="form-group">
+                <label for="total_harvest">总收获</label>
+                <input type="text" id="total_harvest" name="total_harvest" placeholder="例如：5斤 / 鲫鱼10条"
+                       value="{{ invitation['total_harvest'] if invitation and invitation['total_harvest'] else '' }}">
+            </div>
+
             <div class="form-group full-width">
                 <label for="notes">备注</label>
                 <textarea id="notes" name="notes" rows="3" placeholder="约钓备注、集合时间地点等">{{ invitation['notes'] if invitation and invitation['notes'] else '' }}</textarea>
@@ -60,6 +66,7 @@
             <div class="members-header">
                 <h3>同行钓友</h3>
                 <div class="members-header-actions">
+                    <button type="button" class="btn btn-small" onclick="splitHarvestEvenly()">🐟 分摊收获</button>
                     <button type="button" class="btn btn-small" onclick="splitCostEvenly()">💰 平均分摊</button>
                     <button type="button" class="btn btn-small btn-primary" onclick="addMemberRow()">+ 添加钓友</button>
                 </div>
@@ -230,6 +237,82 @@
         if (container.children.length === 0) {
             document.getElementById('member-empty-hint').style.display = 'block';
         }
+    }
+
+    function splitHarvestEvenly() {
+        var totalHarvestInput = document.getElementById('total_harvest');
+        var totalHarvestStr = totalHarvestInput.value.trim();
+
+        var memberRows = document.querySelectorAll('#members-container .member-row');
+        var memberCount = memberRows.length;
+
+        if (memberCount === 0) {
+            alert('请先添加钓友！');
+            return;
+        }
+
+        if (!totalHarvestStr) {
+            alert('请先填写总收获！');
+            return;
+        }
+
+        var harvestVal = 0;
+        var zeroKeywords = ['空军', '白板', '打龟', '空手', '空竿', '光头',
+            '没钓到', '无收获', '零收获', '零', '0', '打飞机',
+            '参军', '空', '龟', '白跑一趟', '参军了', '空军了'];
+        var lowerStr = totalHarvestStr.toLowerCase();
+        var isZero = false;
+        for (var i = 0; i < zeroKeywords.length; i++) {
+            if (lowerStr.indexOf(zeroKeywords[i]) !== -1) {
+                isZero = true;
+                break;
+            }
+        }
+
+        if (isZero) {
+            harvestVal = 0;
+        } else {
+            var matches = totalHarvestStr.match(/(\d+(?:\.\d+)?)/g);
+            if (matches && matches.length > 0) {
+                var numStr = matches[matches.length - 1];
+                harvestVal = parseFloat(numStr) || 0;
+            }
+        }
+
+        if (harvestVal <= 0) {
+            alert('总收获数值无效，无法分摊！');
+            return;
+        }
+
+        var avgShare = Math.floor((harvestVal / memberCount) * 100) / 100;
+        var remainder = Math.floor((harvestVal - avgShare * memberCount) * 100) / 100;
+
+        var unit = '斤';
+        if (totalHarvestStr.indexOf('条') !== -1) {
+            unit = '条';
+        } else if (totalHarvestStr.indexOf('尾') !== -1) {
+            unit = '尾';
+        } else if (totalHarvestStr.indexOf('kg') !== -1 || totalHarvestStr.indexOf('KG') !== -1 || totalHarvestStr.indexOf('公斤') !== -1) {
+            unit = '公斤';
+        }
+
+        memberRows.forEach(function(row, idx) {
+            var harvestInput = row.querySelector('input[name="member_harvest[]"]');
+            if (harvestInput) {
+                var share = avgShare;
+                if (idx === 0 && remainder > 0) {
+                    share = Math.floor((share + remainder) * 100) / 100;
+                }
+                if (unit === '条' || unit === '尾') {
+                    share = Math.floor(share);
+                    if (idx === 0 && remainder > 0) {
+                        share = share + Math.floor(remainder);
+                    }
+                }
+                var shareStr = (share % 1 === 0 ? Math.floor(share) : share) + unit;
+                harvestInput.value = shareStr;
+            }
+        });
     }
 
     function splitCostEvenly() {

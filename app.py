@@ -120,6 +120,8 @@ def init_db():
             FOREIGN KEY (invitation_id) REFERENCES fishing_invitations(id) ON DELETE CASCADE
         )
     ''')
+    if not column_exists(conn, 'fishing_invitations', 'total_harvest'):
+        conn.execute('ALTER TABLE fishing_invitations ADD COLUMN total_harvest TEXT')
     if not column_exists(conn, 'audit_logs', 'batch_id'):
         conn.execute('ALTER TABLE audit_logs ADD COLUMN batch_id TEXT DEFAULT \'legacy\' NOT NULL')
         conn.execute('UPDATE audit_logs SET batch_id = \'legacy\' WHERE batch_id IS NULL OR batch_id = \'\'')
@@ -851,6 +853,22 @@ def invitations_list():
             (inv['id'],)
         ).fetchall()
         inv_dict['members'] = [dict(m) for m in members]
+        
+        member_count = len(members)
+        total_cost = inv_dict.get('total_cost') or 0
+        inv_dict['avg_cost'] = round(total_cost / member_count, 2) if member_count > 0 and total_cost > 0 else 0
+        
+        total_harvest = inv_dict.get('total_harvest') or ''
+        inv_dict['total_harvest_display'] = total_harvest if total_harvest else ''
+        if total_harvest:
+            harvest_val = parse_harvest_value(total_harvest)
+            inv_dict['avg_harvest'] = round(harvest_val / member_count, 2) if member_count > 0 and harvest_val > 0 else 0
+        else:
+            inv_dict['avg_harvest'] = 0
+        
+        members_with_harvest = [m for m in inv_dict['members'] if m.get('harvest_detail')]
+        inv_dict['members_with_harvest_count'] = len(members_with_harvest)
+        
         inv_list.append(inv_dict)
 
     conn.close()
@@ -858,8 +876,21 @@ def invitations_list():
 
 
 def get_all_spot_names(conn):
-    rows = conn.execute('SELECT name FROM fishing_spots ORDER BY name').fetchall()
-    return [row['name'] for row in rows]
+    rows = conn.execute('SELECT DISTINCT name FROM fishing_spots ORDER BY name').fetchall()
+    spot_set = set()
+    result = []
+    for row in rows:
+        name = row['name']
+        if name and name not in spot_set:
+            spot_set.add(name)
+            result.append(name)
+    log_rows = conn.execute('SELECT DISTINCT spot FROM fishing_logs WHERE spot IS NOT NULL AND spot != "" ORDER BY spot').fetchall()
+    for row in log_rows:
+        name = row['spot']
+        if name and name not in spot_set:
+            spot_set.add(name)
+            result.append(name)
+    return result
 
 
 @app.route('/invitations/add', methods=['GET', 'POST'])
@@ -872,6 +903,7 @@ def add_invitation():
         date = request.form['date'].strip()
         notes = request.form.get('notes', '').strip()
         total_cost = request.form.get('total_cost', '0').strip()
+        total_harvest = request.form.get('total_harvest', '').strip()
         status = request.form.get('status', 'planned').strip()
 
         member_names = request.form.getlist('member_name[]')
@@ -883,9 +915,9 @@ def add_invitation():
         else:
             cost = float(total_cost) if total_cost else 0
             cursor = conn.execute('''
-                INSERT INTO fishing_invitations (spot, date, notes, status, total_cost)
-                VALUES (?, ?, ?, ?, ?)
-            ''', (spot, date, notes or None, status, cost))
+                INSERT INTO fishing_invitations (spot, date, notes, status, total_cost, total_harvest)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (spot, date, notes or None, status, cost, total_harvest or None))
             inv_id = cursor.lastrowid
 
             for i, name in enumerate(member_names):
@@ -928,6 +960,17 @@ def invitations_detail(inv_id):
     member_count = max(1, len(members))
     inv_dict['avg_cost'] = round(total_cost / member_count, 2) if total_cost > 0 else 0
 
+    total_harvest = inv_dict.get('total_harvest') or ''
+    inv_dict['total_harvest_display'] = total_harvest if total_harvest else ''
+    if total_harvest:
+        harvest_val = parse_harvest_value(total_harvest)
+        inv_dict['avg_harvest'] = round(harvest_val / member_count, 2) if member_count > 0 and harvest_val > 0 else 0
+    else:
+        inv_dict['avg_harvest'] = 0
+
+    members_with_harvest = [m for m in inv_dict['members'] if m.get('harvest_detail')]
+    inv_dict['members_with_harvest_count'] = len(members_with_harvest)
+
     conn.close()
     return render_template('invitation_detail.html', invitation=inv_dict)
 
@@ -953,6 +996,7 @@ def edit_invitation(inv_id):
         date = request.form['date'].strip()
         notes = request.form.get('notes', '').strip()
         total_cost = request.form.get('total_cost', '0').strip()
+        total_harvest = request.form.get('total_harvest', '').strip()
         status = request.form.get('status', 'planned').strip()
 
         member_names = request.form.getlist('member_name[]')
@@ -965,9 +1009,9 @@ def edit_invitation(inv_id):
             cost = float(total_cost) if total_cost else 0
             conn.execute('''
                 UPDATE fishing_invitations
-                SET spot = ?, date = ?, notes = ?, status = ?, total_cost = ?
+                SET spot = ?, date = ?, notes = ?, status = ?, total_cost = ?, total_harvest = ?
                 WHERE id = ?
-            ''', (spot, date, notes or None, status, cost, inv_id))
+            ''', (spot, date, notes or None, status, cost, total_harvest or None, inv_id))
 
             conn.execute('DELETE FROM invitation_members WHERE invitation_id = ?', (inv_id,))
 
@@ -1121,6 +1165,74 @@ def split_invitation_cost(inv_id):
     conn.commit()
     conn.close()
     flash('费用已平均分摊！', 'success')
+    return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+
+@app.route('/invitations/<int:inv_id>/split-harvest', methods=['POST'])
+def split_invitation_harvest(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT * FROM fishing_invitations WHERE id = ?', (inv_id,)).fetchone()
+    if inv is None:
+        conn.close()
+        flash('邀约不存在！', 'error')
+        return redirect(url_for('invitations_list'))
+
+    members = conn.execute(
+        'SELECT id FROM invitation_members WHERE invitation_id = ?',
+        (inv_id,)
+    ).fetchall()
+
+    total_harvest = inv['total_harvest'] or ''
+    member_count = len(members)
+
+    if member_count == 0:
+        conn.close()
+        flash('暂无可分摊收获的钓友！', 'error')
+        return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+    if not total_harvest:
+        conn.close()
+        flash('请先填写总收获！', 'error')
+        return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+    harvest_val = parse_harvest_value(total_harvest)
+    if harvest_val <= 0:
+        conn.close()
+        flash('总收获数值无效，无法分摊！', 'error')
+        return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+    unit = '斤'
+    total_lower = total_harvest.lower()
+    if '条' in total_harvest:
+        unit = '条'
+    elif '尾' in total_harvest:
+        unit = '尾'
+    elif 'kg' in total_lower or '公斤' in total_harvest:
+        unit = '公斤'
+
+    if unit in ['条', '尾']:
+        avg_share = harvest_val // member_count
+        remainder = harvest_val - avg_share * member_count
+    else:
+        avg_share = round(harvest_val / member_count, 2)
+        remainder = round(harvest_val - avg_share * member_count, 2)
+
+    for i, member in enumerate(members):
+        share = avg_share
+        if i == 0 and remainder > 0:
+            share = share + remainder
+        if unit in ['条', '尾']:
+            share_str = f'{int(share)}{unit}'
+        else:
+            share_str = f'{share}{unit}' if share != int(share) else f'{int(share)}{unit}'
+        conn.execute(
+            'UPDATE invitation_members SET harvest_detail = ? WHERE id = ?',
+            (share_str, member['id'])
+        )
+
+    conn.commit()
+    conn.close()
+    flash('收获已按人数平均分摊！', 'success')
     return redirect(url_for('invitations_detail', inv_id=inv_id))
 
 

@@ -2728,12 +2728,39 @@ footer {
 
 .member-tag {
     display: inline-block;
-    padding: 3px 10px;
+    padding: 4px 12px;
     background: #edf2f7;
     color: #4a5568;
-    border-radius: 14px;
+    border-radius: 16px;
     font-size: 13px;
     font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.member-tag .member-name {
+    color: #2d3748;
+}
+
+.member-harvest-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    background: #c6f6d5;
+    color: #22543d;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.member-cost-badge {
+    display: inline-block;
+    padding: 1px 6px;
+    background: #fed7d7;
+    color: #742a2a;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
 }
 
 .invitation-notes {

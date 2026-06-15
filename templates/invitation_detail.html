@@ -44,9 +44,19 @@
                 <span class="detail-value">{{ invitation['member_count'] }} 人</span>
             </div>
             <div class="detail-item">
+                <span class="detail-label">总收获</span>
+                <span class="detail-value">{% if invitation['total_harvest_display'] %}🐟 {{ invitation['total_harvest_display'] }}{% else %}未记录{% endif %}</span>
+            </div>
+            <div class="detail-item">
                 <span class="detail-label">总费用</span>
                 <span class="detail-value">{% if invitation['total_cost'] %}¥{{ invitation['total_cost'] }}{% else %}未记录{% endif %}</span>
             </div>
+            {% if invitation['total_harvest_display'] and invitation['avg_harvest'] > 0 %}
+            <div class="detail-item">
+                <span class="detail-label">人均收获</span>
+                <span class="detail-value">🐟 {{ invitation['avg_harvest'] }} 斤</span>
+            </div>
+            {% endif %}
             {% if invitation['total_cost'] and invitation['total_cost'] > 0 %}
             <div class="detail-item">
                 <span class="detail-label">人均费用</span>
@@ -67,6 +77,11 @@
         <div class="members-header">
             <h3>👥 同行钓友 ({{ invitation['member_count'] }}人)</h3>
             <div class="members-header-actions">
+                {% if invitation['members'] and invitation['total_harvest_display'] %}
+                <form method="POST" action="{{ url_for('split_invitation_harvest', inv_id=invitation['id']) }}" class="inline-form">
+                    <button type="submit" class="btn btn-small" onclick="return confirm('确定要按人数平均分摊总收获吗？将覆盖每人现有收获明细！')">🐟 分摊收获</button>
+                </form>
+                {% endif %}
                 {% if invitation['members'] and invitation['total_cost'] and invitation['total_cost'] > 0 %}
                 <form method="POST" action="{{ url_for('split_invitation_cost', inv_id=invitation['id']) }}" class="inline-form">
                     <button type="submit" class="btn btn-small" onclick="return confirm('确定要平均分摊费用吗？')">💰 平均分摊</button>
@@ -142,7 +157,10 @@
                     <tfoot>
                         <tr class="members-total-row">
                             <td><strong>合计</strong></td>
-                            <td></td>
+                            <td>
+                                {% set total_harvest_numeric = invitation['members'] | map(attribute='harvest_detail') | list %}
+                                <strong>共 {{ invitation['members_with_harvest_count'] }} 人有收获记录</strong>
+                            </td>
                             <td><strong>¥{{ invitation['members'] | sum(attribute='cost_share') }}</strong></td>
                             <td></td>
                         </tr>

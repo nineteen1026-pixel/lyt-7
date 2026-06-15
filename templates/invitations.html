@@ -37,14 +37,27 @@
                     <div class="invitation-card-body">
                         <div class="invitation-meta">
                             <span class="meta-item">👥 {{ inv['member_count'] }} 人</span>
+                            {% if inv['total_harvest'] %}
+                                <span class="meta-item">🐟 总收获 {{ inv['total_harvest'] }}</span>
+                                {% if inv['avg_harvest'] > 0 %}
+                                <span class="meta-item">📊 人均 {{ inv['avg_harvest'] }}斤</span>
+                                {% endif %}
+                            {% endif %}
                             {% if inv['total_cost'] and inv['total_cost'] > 0 %}
                                 <span class="meta-item">💰 总费用 ¥{{ inv['total_cost'] }}</span>
+                                {% if inv['avg_cost'] > 0 %}
+                                <span class="meta-item">💴 人均 ¥{{ inv['avg_cost'] }}</span>
+                                {% endif %}
                             {% endif %}
                         </div>
                         {% if inv['members'] %}
                             <div class="invitation-member-preview">
                                 {% for m in inv['members'] %}
-                                    <span class="member-tag">{{ m['name'] }}</span>
+                                    <span class="member-tag">
+                                        <span class="member-name">{{ m['name'] }}</span>
+                                        {% if m['harvest_detail'] %}<span class="member-harvest-badge">🐟 {{ m['harvest_detail'] }}</span>{% endif %}
+                                        {% if m['cost_share'] and m['cost_share'] > 0 %}<span class="member-cost-badge">¥{{ m['cost_share'] }}</span>{% endif %}
+                                    </span>
                                 {% endfor %}
                             </div>
                         {% endif %}
