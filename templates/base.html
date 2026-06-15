@@ -9,22 +9,10 @@
 <body>
     <div class="container">
         <header>
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; margin-bottom: 15px;">
-                <h1 style="margin: 0;">🎣 钓点日志</h1>
-                <a href="{{ url_for('gallery') }}" style="text-decoration: none;">
-                    <div class="gallery-badge" style="display: flex; align-items: center; gap: 10px; padding: 8px 18px; background: linear-gradient(135deg, {{ gallery_reputation.color }}25, {{ gallery_reputation.color }}10); border: 2px solid {{ gallery_reputation.color }}50; border-radius: 25px; transition: all 0.2s ease;">
-                        <span style="font-size: 22px;">{{ gallery_reputation.icon }}</span>
-                        <div style="text-align: left;">
-                            <div style="font-size: 11px; color: #718096; font-weight: 500;">陈列室 · {{ gallery_reputation.name }}</div>
-                            <div style="font-size: 12px; color: #4a5568; font-weight: 600;">🖼️ {{ gallery_exhibits }} 展品 · 💰 ¥{{ '%.0f'|format(gallery_revenue) }}</div>
-                        </div>
-                    </div>
-                </a>
-            </div>
+            <h1>🎣 钓点日志</h1>
             <nav>
                 <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">首页</a>
                 <a href="{{ url_for('add_log') }}" class="{% if request.endpoint == 'add_log' %}active{% endif %}">新增记录</a>
-                <a href="{{ url_for('gallery') }}" class="{% if request.endpoint in ['gallery', 'exhibit_detail'] %}active{% endif %}" style="background: linear-gradient(135deg, {{ gallery_reputation.color }}30, transparent); border: 1px solid {{ gallery_reputation.color }}40;">🏛️ 陈列室经营</a>
                 <a href="{{ url_for('spots_list') }}" class="{% if request.endpoint in ['spots_list', 'spot_detail', 'add_spot', 'edit_spot'] %}active{% endif %}">钓点管理</a>
                 <a href="{{ url_for('spots_list', filter='favorite') }}" class="{% if request.endpoint == 'spots_list' and request.args.get('filter') == 'favorite' %}active{% endif %}">⭐ 收藏评分</a>
                 <a href="{{ url_for('by_spot') }}" class="{% if request.endpoint == 'by_spot' %}active{% endif %}">按钓点</a>

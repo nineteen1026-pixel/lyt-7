@@ -14,7 +14,10 @@
         <div class="form-grid">
             <div class="form-group">
                 <label for="spot">钓点 <span class="required">*</span></label>
-                <input type="text" id="spot" name="spot" placeholder="例如：东湖水库" required value="{{ log['spot'] }}">
+                <div class="spot-autocomplete-wrapper">
+                    <input type="text" id="spot" name="spot" placeholder="输入钓点名称搜索历史..." autocomplete="off" required value="{{ log['spot'] }}">
+                    <div id="spot-suggestions" class="spot-suggestions"></div>
+                </div>
             </div>
 
             <div class="form-group">
@@ -112,6 +115,85 @@
     </form>
 
     <script>
+    var spotSearchTimer = null;
+    var spotCache = [];
+
+    document.getElementById('spot').addEventListener('input', function(e) {
+        clearTimeout(spotSearchTimer);
+        var val = e.target.value.trim();
+        spotSearchTimer = setTimeout(function() {
+            searchSpots(val);
+        }, 200);
+    });
+
+    document.getElementById('spot').addEventListener('focus', function(e) {
+        var val = e.target.value.trim();
+        searchSpots(val);
+    });
+
+    document.addEventListener('click', function(e) {
+        var wrapper = document.querySelector('.spot-autocomplete-wrapper');
+        if (!wrapper.contains(e.target)) {
+            document.getElementById('spot-suggestions').style.display = 'none';
+        }
+    });
+
+    function searchSpots(keyword) {
+        var url = '/api/spots/search';
+        if (keyword) {
+            url += '?q=' + encodeURIComponent(keyword);
+        }
+        fetch(url)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success && data.data && data.data.length > 0) {
+                    spotCache = data.data;
+                    renderSpotSuggestions(data.data);
+                } else {
+                    spotCache = [];
+                    document.getElementById('spot-suggestions').style.display = 'none';
+                }
+            })
+            .catch(function() {
+                document.getElementById('spot-suggestions').style.display = 'none';
+            });
+    }
+
+    function renderSpotSuggestions(spots) {
+        var listEl = document.getElementById('spot-suggestions');
+        var html = '';
+        spots.forEach(function(spot, idx) {
+            html += '<div class="spot-suggestion-item" onclick="selectSpot(' + idx + ')">';
+            html += '<div class="spot-suggestion-name">' + escapeHtml(spot.name) + '</div>';
+            if (spot.water_level || spot.bait) {
+                html += '<div class="spot-suggestion-meta">';
+                if (spot.water_level) {
+                    html += '<span class="meta-tag">水位：' + escapeHtml(spot.water_level) + '</span>';
+                }
+                if (spot.bait) {
+                    html += '<span class="meta-tag">饵料：' + escapeHtml(spot.bait) + '</span>';
+                }
+                html += '</div>';
+            }
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+        listEl.style.display = 'block';
+    }
+
+    function selectSpot(idx) {
+        var spot = spotCache[idx];
+        if (!spot) return;
+        document.getElementById('spot').value = spot.name;
+        if (spot.water_level) {
+            document.getElementById('water_level').value = spot.water_level;
+        }
+        if (spot.bait) {
+            document.getElementById('bait').value = spot.bait;
+        }
+        document.getElementById('spot-suggestions').style.display = 'none';
+    }
+
     function handleBaitSelect() {
         var select = document.getElementById('bait-select');
         var input = document.getElementById('bait');
