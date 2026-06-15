@@ -125,6 +125,14 @@ def init_db():
     if not column_exists(conn, 'audit_logs', 'batch_id'):
         conn.execute('ALTER TABLE audit_logs ADD COLUMN batch_id TEXT DEFAULT \'legacy\' NOT NULL')
         conn.execute('UPDATE audit_logs SET batch_id = \'legacy\' WHERE batch_id IS NULL OR batch_id = \'\'')
+    if not column_exists(conn, 'fishing_logs', 'deleted_at'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN deleted_at TIMESTAMP')
+    if not column_exists(conn, 'fishing_spots', 'deleted_at'):
+        conn.execute('ALTER TABLE fishing_spots ADD COLUMN deleted_at TIMESTAMP')
+    if not column_exists(conn, 'baits', 'deleted_at'):
+        conn.execute('ALTER TABLE baits ADD COLUMN deleted_at TIMESTAMP')
+    if not column_exists(conn, 'fishing_invitations', 'deleted_at'):
+        conn.execute('ALTER TABLE fishing_invitations ADD COLUMN deleted_at TIMESTAMP')
     conn.commit()
     conn.close()
 
@@ -289,14 +297,14 @@ def index():
 
     conn = get_db()
 
-    count_result = conn.execute('SELECT COUNT(*) as total FROM fishing_logs').fetchone()
+    count_result = conn.execute('SELECT COUNT(*) as total FROM fishing_logs WHERE deleted_at IS NULL').fetchone()
     total = count_result['total']
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = max(1, min(page, total_pages))
     offset = (page - 1) * per_page
 
     logs = conn.execute(
-        f'SELECT * FROM fishing_logs ORDER BY {order_clause} LIMIT ? OFFSET ?',
+        f'SELECT * FROM fishing_logs WHERE deleted_at IS NULL ORDER BY {order_clause} LIMIT ? OFFSET ?',
         (per_page, offset)
     ).fetchall()
     conn.close()
@@ -364,7 +372,7 @@ def log_detail(log_id):
     spot_logs = conn.execute('''
         SELECT id, created_at, harvest, fish_species, bait
         FROM fishing_logs
-        WHERE spot = ?
+        WHERE spot = ? AND deleted_at IS NULL
         ORDER BY created_at ASC, id ASC
     ''', (log['spot'],)).fetchall()
 
@@ -422,14 +430,14 @@ def log_detail(log_id):
 @app.route('/by-spot')
 def by_spot():
     conn = get_db()
-    spots = conn.execute('SELECT DISTINCT spot FROM fishing_logs ORDER BY spot').fetchall()
+    spots = conn.execute('SELECT DISTINCT spot FROM fishing_logs WHERE deleted_at IS NULL ORDER BY spot').fetchall()
     spot_list = [row['spot'] for row in spots]
 
     selected_spot = request.args.get('spot', spot_list[0] if spot_list else None)
     logs = []
     if selected_spot:
         logs = conn.execute(
-            'SELECT * FROM fishing_logs WHERE spot = ? ORDER BY created_at DESC, id DESC',
+            'SELECT * FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC',
             (selected_spot,)
         ).fetchall()
     conn.close()
@@ -441,7 +449,7 @@ def by_spot():
 def by_date():
     conn = get_db()
     dates = conn.execute(
-        'SELECT DISTINCT created_at FROM fishing_logs ORDER BY created_at DESC'
+        'SELECT DISTINCT created_at FROM fishing_logs WHERE deleted_at IS NULL ORDER BY created_at DESC'
     ).fetchall()
     date_list = [row['created_at'] for row in dates]
 
@@ -449,7 +457,7 @@ def by_date():
     logs = []
     if selected_date:
         logs = conn.execute(
-            'SELECT * FROM fishing_logs WHERE created_at = ? ORDER BY id DESC',
+            'SELECT * FROM fishing_logs WHERE created_at = ? AND deleted_at IS NULL ORDER BY id DESC',
             (selected_date,)
         ).fetchall()
     conn.close()
@@ -464,16 +472,16 @@ def delete_log(log_id):
     per_page = request.args.get('per_page', 20, type=int)
 
     conn = get_db()
-    conn.execute('DELETE FROM fishing_logs WHERE id = ?', (log_id,))
+    conn.execute('UPDATE fishing_logs SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (log_id,))
     conn.commit()
     conn.close()
-    flash('记录已删除！', 'success')
+    flash('记录已移入回收站！', 'success')
     return redirect(url_for('index', page=page, sort=sort_by, per_page=per_page))
 
 
 def get_spot_visit_count(conn, spot_name):
     result = conn.execute(
-        'SELECT COUNT(*) as cnt FROM fishing_logs WHERE spot = ?',
+        'SELECT COUNT(*) as cnt FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL',
         (spot_name,)
     ).fetchone()
     return result['cnt'] if result else 0
@@ -501,6 +509,7 @@ def spots_list():
                (SELECT AVG(r.rating) FROM spot_ratings r WHERE r.spot_id = s.id) as avg_rating,
                (SELECT COUNT(*) FROM spot_ratings r WHERE r.spot_id = s.id) as rating_count
         FROM fishing_spots s
+        WHERE s.deleted_at IS NULL
     '''
     params = []
     conditions = []
@@ -509,7 +518,7 @@ def spots_list():
         conditions.append('s.is_favorite = 1')
 
     if conditions:
-        query += ' WHERE ' + ' AND '.join(conditions)
+        query += ' AND ' + ' AND '.join(conditions)
 
     if sort_by == 'rating':
         query += ' ORDER BY avg_rating IS NULL, avg_rating DESC, s.name'
@@ -568,7 +577,7 @@ def get_spot_bait_stats(conn, spot_name):
     rows = conn.execute('''
         SELECT bait, COUNT(*) as use_count
         FROM fishing_logs
-        WHERE spot = ? AND bait IS NOT NULL AND bait != ''
+        WHERE spot = ? AND bait IS NOT NULL AND bait != '' AND deleted_at IS NULL
         GROUP BY bait
         ORDER BY use_count DESC
         LIMIT 3
@@ -580,7 +589,7 @@ def get_spot_best_harvest(conn, spot_name):
     rows = conn.execute('''
         SELECT id, harvest, created_at, fish_species, bait
         FROM fishing_logs
-        WHERE spot = ? AND harvest IS NOT NULL AND harvest != ''
+        WHERE spot = ? AND harvest IS NOT NULL AND harvest != '' AND deleted_at IS NULL
         ORDER BY id DESC
     ''', (spot_name,)).fetchall()
 
@@ -621,7 +630,7 @@ def spot_detail(spot_id):
     ).fetchall()
 
     related_logs = conn.execute(
-        'SELECT * FROM fishing_logs WHERE spot = ? ORDER BY created_at DESC, id DESC',
+        'SELECT * FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC',
         (spot['name'],)
     ).fetchall()
 
@@ -751,7 +760,7 @@ def spot_visits_data(spot_id):
     visits = conn.execute('''
         SELECT created_at, COUNT(*) as count
         FROM fishing_logs
-        WHERE spot = ?
+        WHERE spot = ? AND deleted_at IS NULL
         GROUP BY created_at
         ORDER BY created_at DESC
     ''', (spot['name'],)).fetchall()
@@ -759,7 +768,7 @@ def spot_visits_data(spot_id):
     monthly = conn.execute('''
         SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
         FROM fishing_logs
-        WHERE spot = ?
+        WHERE spot = ? AND deleted_at IS NULL
         GROUP BY month
         ORDER BY month DESC
         LIMIT 12
@@ -777,10 +786,10 @@ def spot_visits_data(spot_id):
 @app.route('/spots/<int:spot_id>/delete', methods=['POST'])
 def delete_spot(spot_id):
     conn = get_db()
-    conn.execute('DELETE FROM fishing_spots WHERE id = ?', (spot_id,))
+    conn.execute('UPDATE fishing_spots SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (spot_id,))
     conn.commit()
     conn.close()
-    flash('钓点已删除！', 'success')
+    flash('钓点已移入回收站！', 'success')
     return redirect(url_for('spots_list'))
 
 
@@ -830,6 +839,7 @@ def invitations_list():
         SELECT i.*,
                (SELECT COUNT(*) FROM invitation_members m WHERE m.invitation_id = i.id) as member_count
         FROM fishing_invitations i
+        WHERE i.deleted_at IS NULL
     '''
     params = []
     conditions = []
@@ -839,7 +849,7 @@ def invitations_list():
         params.append(filter_status)
 
     if conditions:
-        query += ' WHERE ' + ' AND '.join(conditions)
+        query += ' AND ' + ' AND '.join(conditions)
 
     query += ' ORDER BY i.date DESC, i.id DESC'
 
@@ -876,7 +886,7 @@ def invitations_list():
 
 
 def get_all_spot_names(conn):
-    rows = conn.execute('SELECT DISTINCT name FROM fishing_spots ORDER BY name').fetchall()
+    rows = conn.execute('SELECT DISTINCT name FROM fishing_spots WHERE deleted_at IS NULL ORDER BY name').fetchall()
     spot_set = set()
     result = []
     for row in rows:
@@ -884,7 +894,7 @@ def get_all_spot_names(conn):
         if name and name not in spot_set:
             spot_set.add(name)
             result.append(name)
-    log_rows = conn.execute('SELECT DISTINCT spot FROM fishing_logs WHERE spot IS NOT NULL AND spot != "" ORDER BY spot').fetchall()
+    log_rows = conn.execute('SELECT DISTINCT spot FROM fishing_logs WHERE spot IS NOT NULL AND spot != "" AND deleted_at IS NULL ORDER BY spot').fetchall()
     for row in log_rows:
         name = row['spot']
         if name and name not in spot_set:
@@ -1037,11 +1047,10 @@ def edit_invitation(inv_id):
 @app.route('/invitations/<int:inv_id>/delete', methods=['POST'])
 def delete_invitation(inv_id):
     conn = get_db()
-    conn.execute('DELETE FROM invitation_members WHERE invitation_id = ?', (inv_id,))
-    conn.execute('DELETE FROM fishing_invitations WHERE id = ?', (inv_id,))
+    conn.execute('UPDATE fishing_invitations SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (inv_id,))
     conn.commit()
     conn.close()
-    flash('邀约已删除！', 'success')
+    flash('邀约已移入回收站！', 'success')
     return redirect(url_for('invitations_list'))
 
 
@@ -1243,6 +1252,7 @@ def monthly_report():
     months = conn.execute('''
         SELECT DISTINCT strftime('%Y-%m', created_at) as month
         FROM fishing_logs
+        WHERE deleted_at IS NULL
         ORDER BY month DESC
     ''').fetchall()
     month_list = [row['month'] for row in months]
@@ -1260,7 +1270,7 @@ def monthly_report():
         species_rows = conn.execute('''
             SELECT fish_species, COUNT(*) as log_count
             FROM fishing_logs
-            WHERE strftime('%Y-%m', created_at) = ?
+            WHERE strftime('%Y-%m', created_at) = ? AND deleted_at IS NULL
             GROUP BY fish_species
             ORDER BY log_count DESC
         ''', (selected_month,)).fetchall()
@@ -1280,7 +1290,7 @@ def monthly_report():
         spot_rows = conn.execute('''
             SELECT spot, COUNT(*) as log_count
             FROM fishing_logs
-            WHERE strftime('%Y-%m', created_at) = ?
+            WHERE strftime('%Y-%m', created_at) = ? AND deleted_at IS NULL
             GROUP BY spot
         ''', (selected_month,)).fetchall()
 
@@ -1288,7 +1298,7 @@ def monthly_report():
 
         all_logs = conn.execute('''
             SELECT harvest FROM fishing_logs
-            WHERE strftime('%Y-%m', created_at) = ?
+            WHERE strftime('%Y-%m', created_at) = ? AND deleted_at IS NULL
         ''', (selected_month,)).fetchall()
 
         total_harvest = sum(parse_harvest_value(log['harvest']) for log in all_logs)
@@ -1297,7 +1307,7 @@ def monthly_report():
         for row in spot_rows:
             spot_logs = conn.execute('''
                 SELECT harvest FROM fishing_logs
-                WHERE spot = ? AND strftime('%Y-%m', created_at) = ?
+                WHERE spot = ? AND strftime('%Y-%m', created_at) = ? AND deleted_at IS NULL
             ''', (row['spot'], selected_month)).fetchall()
             spot_harvest = sum(parse_harvest_value(log['harvest']) for log in spot_logs)
             spot_data.append({
@@ -1333,13 +1343,13 @@ def monthly_report():
 
 
 def get_all_baits(conn):
-    baits = conn.execute('SELECT * FROM baits ORDER BY name').fetchall()
+    baits = conn.execute('SELECT * FROM baits WHERE deleted_at IS NULL ORDER BY name').fetchall()
     return [dict(b) for b in baits]
 
 
 def get_bait_usage_stats(conn, bait_name):
     logs = conn.execute(
-        'SELECT harvest FROM fishing_logs WHERE bait = ?',
+        'SELECT harvest FROM fishing_logs WHERE bait = ? AND deleted_at IS NULL',
         (bait_name,)
     ).fetchall()
     use_count = len(logs)
@@ -1361,7 +1371,7 @@ def baits_list():
     conn = get_db()
     sort_by = request.args.get('sort', 'success')
 
-    baits = conn.execute('SELECT * FROM baits ORDER BY name').fetchall()
+    baits = conn.execute('SELECT * FROM baits WHERE deleted_at IS NULL ORDER BY name').fetchall()
 
     bait_stats = []
     for bait in baits:
@@ -1380,7 +1390,7 @@ def baits_list():
         bait_stats.sort(key=lambda x: x['avg_harvest'], reverse=True)
 
     all_baits_from_logs = conn.execute(
-        'SELECT DISTINCT bait FROM fishing_logs WHERE bait NOT IN (SELECT name FROM baits) ORDER BY bait'
+        'SELECT DISTINCT bait FROM fishing_logs WHERE bait NOT IN (SELECT name FROM baits WHERE deleted_at IS NULL) AND bait IS NOT NULL AND bait != "" AND deleted_at IS NULL ORDER BY bait'
     ).fetchall()
     unmanaged_baits = [row['bait'] for row in all_baits_from_logs if row['bait']]
 
@@ -1468,10 +1478,10 @@ def edit_bait(bait_id):
 @app.route('/baits/<int:bait_id>/delete', methods=['POST'])
 def delete_bait(bait_id):
     conn = get_db()
-    conn.execute('DELETE FROM baits WHERE id = ?', (bait_id,))
+    conn.execute('UPDATE baits SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (bait_id,))
     conn.commit()
     conn.close()
-    flash('饵料已删除！', 'success')
+    flash('饵料已移入回收站！', 'success')
     return redirect(url_for('baits_list'))
 
 
@@ -1554,7 +1564,7 @@ def api_weather_history():
         rows = conn.execute('''
             SELECT DISTINCT weather, temperature, humidity, wind, created_at
             FROM fishing_logs
-            WHERE weather IS NOT NULL AND weather != ''
+            WHERE weather IS NOT NULL AND weather != '' AND deleted_at IS NULL
             ORDER BY created_at DESC
             LIMIT 20
         ''').fetchall()
@@ -1595,20 +1605,20 @@ def api_spots_search():
         keyword = request.args.get('q', '').strip()
         query = '''
             SELECT DISTINCT spot FROM fishing_logs
-            WHERE spot IS NOT NULL AND spot != ''
+            WHERE spot IS NOT NULL AND spot != '' AND deleted_at IS NULL
         '''
         params = []
         if keyword:
             query += ' AND spot LIKE ?'
             params.append(f'%{keyword}%')
-        query += ' ORDER BY (SELECT COUNT(*) FROM fishing_logs l WHERE l.spot = fishing_logs.spot) DESC, spot LIMIT 20'
+        query += ' ORDER BY (SELECT COUNT(*) FROM fishing_logs l WHERE l.spot = fishing_logs.spot AND l.deleted_at IS NULL) DESC, spot LIMIT 20'
         rows = conn.execute(query, params).fetchall()
         spots = []
         for row in rows:
             spot_name = row['spot']
             last_log = conn.execute('''
                 SELECT water_level, bait FROM fishing_logs
-                WHERE spot = ? AND water_level IS NOT NULL AND water_level != ''
+                WHERE spot = ? AND water_level IS NOT NULL AND water_level != '' AND deleted_at IS NULL
                 ORDER BY created_at DESC, id DESC LIMIT 1
             ''', (spot_name,)).fetchone()
             spots.append({
@@ -1627,8 +1637,8 @@ def api_spots_search():
 def search_logs():
     conn = get_db()
 
-    spot_list = [row['spot'] for row in conn.execute('SELECT DISTINCT spot FROM fishing_logs ORDER BY spot').fetchall()]
-    species_list = [row['fish_species'] for row in conn.execute('SELECT DISTINCT fish_species FROM fishing_logs ORDER BY fish_species').fetchall()]
+    spot_list = [row['spot'] for row in conn.execute('SELECT DISTINCT spot FROM fishing_logs WHERE deleted_at IS NULL ORDER BY spot').fetchall()]
+    species_list = [row['fish_species'] for row in conn.execute('SELECT DISTINCT fish_species FROM fishing_logs WHERE deleted_at IS NULL ORDER BY fish_species').fetchall()]
 
     date_start = request.args.get('date_start', '').strip()
     date_end = request.args.get('date_end', '').strip()
@@ -1659,7 +1669,7 @@ def search_logs():
 
     logs = []
     if conditions:
-        where_clause = ' AND '.join(conditions)
+        where_clause = ' AND '.join(conditions) + ' AND deleted_at IS NULL'
         logs = conn.execute(
             f'SELECT * FROM fishing_logs WHERE {where_clause} ORDER BY created_at DESC, id DESC',
             params
@@ -1720,7 +1730,7 @@ def export_search_csv():
         flash('请至少设置一个筛选条件再导出！', 'error')
         return redirect(url_for('search_logs'))
 
-    where_clause = ' AND '.join(conditions)
+    where_clause = ' AND '.join(conditions) + ' AND deleted_at IS NULL'
     logs = conn.execute(
         f'SELECT * FROM fishing_logs WHERE {where_clause} ORDER BY created_at DESC, id DESC',
         params
@@ -1797,7 +1807,7 @@ def heatmap():
     years = conn.execute('''
         SELECT DISTINCT strftime('%Y', created_at) as year
         FROM fishing_logs
-        WHERE created_at IS NOT NULL AND created_at != ''
+        WHERE created_at IS NOT NULL AND created_at != '' AND deleted_at IS NULL
         ORDER BY year DESC
     ''').fetchall()
     year_list = [row['year'] for row in years]
@@ -1824,7 +1834,7 @@ def heatmap_data():
     log_query = '''
         SELECT l.spot, l.created_at, l.id as log_id, l.harvest, l.fish_species
         FROM fishing_logs l
-        WHERE l.created_at IS NOT NULL AND l.created_at != ''
+        WHERE l.created_at IS NOT NULL AND l.created_at != '' AND l.deleted_at IS NULL
     '''
     params = []
 
@@ -1859,7 +1869,7 @@ def heatmap_data():
     spots_query = '''
         SELECT id, name, latitude, longitude, address, is_favorite
         FROM fishing_spots
-        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND deleted_at IS NULL
     '''
     spot_rows = conn.execute(spots_query).fetchall()
 
@@ -1905,6 +1915,156 @@ def heatmap_data():
         'total_logs': sum(s['log_count'] for s in result),
         'spots': result
     })
+
+
+@app.route('/recycle-bin')
+def recycle_bin():
+    tab = request.args.get('tab', 'logs')
+    valid_tabs = ['logs', 'spots', 'baits', 'invitations']
+    if tab not in valid_tabs:
+        tab = 'logs'
+
+    conn = get_db()
+
+    log_count = conn.execute('SELECT COUNT(*) FROM fishing_logs WHERE deleted_at IS NOT NULL').fetchone()[0]
+    spot_count = conn.execute('SELECT COUNT(*) FROM fishing_spots WHERE deleted_at IS NOT NULL').fetchone()[0]
+    bait_count = conn.execute('SELECT COUNT(*) FROM baits WHERE deleted_at IS NOT NULL').fetchone()[0]
+    inv_count = conn.execute('SELECT COUNT(*) FROM fishing_invitations WHERE deleted_at IS NOT NULL').fetchone()[0]
+
+    items = []
+    if tab == 'logs':
+        items = conn.execute('''
+            SELECT id, spot, created_at, harvest, fish_species, deleted_at
+            FROM fishing_logs
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ''').fetchall()
+    elif tab == 'spots':
+        items = conn.execute('''
+            SELECT id, name, description, created_at, deleted_at
+            FROM fishing_spots
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ''').fetchall()
+    elif tab == 'baits':
+        items = conn.execute('''
+            SELECT id, name, type, brand, created_at, deleted_at
+            FROM baits
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ''').fetchall()
+    elif tab == 'invitations':
+        items = conn.execute('''
+            SELECT id, spot, date, status, total_cost, deleted_at
+            FROM fishing_invitations
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ''').fetchall()
+
+    conn.close()
+    return render_template(
+        'recycle_bin.html',
+        tab=tab,
+        items=[dict(i) for i in items],
+        counts={
+            'logs': log_count,
+            'spots': spot_count,
+            'baits': bait_count,
+            'invitations': inv_count
+        }
+    )
+
+
+@app.route('/recycle-bin/restore/<item_type>/<int:item_id>', methods=['POST'])
+def restore_item(item_type, item_id):
+    valid_types = {
+        'logs': 'fishing_logs',
+        'spots': 'fishing_spots',
+        'baits': 'baits',
+        'invitations': 'fishing_invitations'
+    }
+    if item_type not in valid_types:
+        flash('无效的类型！', 'error')
+        return redirect(url_for('recycle_bin'))
+
+    table = valid_types[item_type]
+    conn = get_db()
+    conn.execute(f'UPDATE {table} SET deleted_at = NULL WHERE id = ?', (item_id,))
+    conn.commit()
+    conn.close()
+    flash('恢复成功！', 'success')
+    return redirect(url_for('recycle_bin', tab=item_type))
+
+
+@app.route('/recycle-bin/delete/<item_type>/<int:item_id>', methods=['POST'])
+def permanent_delete_item(item_type, item_id):
+    valid_types = {
+        'logs': 'fishing_logs',
+        'spots': 'fishing_spots',
+        'baits': 'baits',
+        'invitations': 'fishing_invitations'
+    }
+    if item_type not in valid_types:
+        flash('无效的类型！', 'error')
+        return redirect(url_for('recycle_bin'))
+
+    table = valid_types[item_type]
+    conn = get_db()
+    conn.execute(f'DELETE FROM {table} WHERE id = ?', (item_id,))
+    conn.commit()
+    conn.close()
+    flash('已彻底删除！', 'success')
+    return redirect(url_for('recycle_bin', tab=item_type))
+
+
+@app.route('/recycle-bin/batch-restore', methods=['POST'])
+def batch_restore():
+    item_type = request.form.get('item_type', '')
+    ids = request.form.getlist('ids')
+
+    valid_types = {
+        'logs': 'fishing_logs',
+        'spots': 'fishing_spots',
+        'baits': 'baits',
+        'invitations': 'fishing_invitations'
+    }
+    if item_type not in valid_types or not ids:
+        flash('请先选择要恢复的项目！', 'error')
+        return redirect(url_for('recycle_bin'))
+
+    table = valid_types[item_type]
+    placeholders = ','.join(['?'] * len(ids))
+    conn = get_db()
+    conn.execute(f'UPDATE {table} SET deleted_at = NULL WHERE id IN ({placeholders})', [int(i) for i in ids])
+    conn.commit()
+    conn.close()
+    flash(f'已批量恢复 {len(ids)} 条记录！', 'success')
+    return redirect(url_for('recycle_bin', tab=item_type))
+
+
+@app.route('/recycle-bin/batch-delete', methods=['POST'])
+def batch_permanent_delete():
+    item_type = request.form.get('item_type', '')
+    ids = request.form.getlist('ids')
+
+    valid_types = {
+        'logs': 'fishing_logs',
+        'spots': 'fishing_spots',
+        'baits': 'baits',
+        'invitations': 'fishing_invitations'
+    }
+    if item_type not in valid_types or not ids:
+        flash('请先选择要彻底删除的项目！', 'error')
+        return redirect(url_for('recycle_bin'))
+
+    table = valid_types[item_type]
+    placeholders = ','.join(['?'] * len(ids))
+    conn = get_db()
+    conn.execute(f'DELETE FROM {table} WHERE id IN ({placeholders})', [int(i) for i in ids])
+    conn.commit()
+    conn.close()
+    flash(f'已彻底删除 {len(ids)} 条记录！', 'success')
+    return redirect(url_for('recycle_bin', tab=item_type))
 
 
 if __name__ == '__main__':
