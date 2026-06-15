@@ -337,36 +337,62 @@ def log_detail(log_id):
         return redirect(url_for('index'))
     audit_logs = get_audit_logs(conn, log_id)
 
-    spot_timeline = conn.execute('''
+    spot_logs = conn.execute('''
         SELECT id, created_at, harvest, fish_species, bait
         FROM fishing_logs
         WHERE spot = ?
         ORDER BY created_at ASC, id ASC
     ''', (log['spot'],)).fetchall()
 
-    prev_log = None
-    next_log = None
-    current_index = None
-    timeline_data = []
-
-    for idx, item in enumerate(spot_timeline):
+    date_groups = {}
+    date_list = []
+    for item in spot_logs:
         item_dict = dict(item)
         item_dict['harvest_value'] = parse_harvest_value(item['harvest'])
-        timeline_data.append(item_dict)
-        if item['id'] == log_id:
-            current_index = idx
+        date = item['created_at']
+        if date not in date_groups:
+            date_groups[date] = []
+            date_list.append(date)
+        date_groups[date].append(item_dict)
 
-    if current_index is not None:
-        if current_index > 0:
-            prev_log = timeline_data[current_index - 1]
-        if current_index < len(timeline_data) - 1:
-            next_log = timeline_data[current_index + 1]
+    spot_timeline = []
+    current_date_index = None
+    current_log_in_date = None
+    for idx, date in enumerate(date_list):
+        logs = date_groups[date]
+        total_harvest = sum(l['harvest_value'] for l in logs)
+        has_current = any(l['id'] == log_id for l in logs)
+        if has_current:
+            current_date_index = idx
+            for i, l in enumerate(logs):
+                if l['id'] == log_id:
+                    current_log_in_date = i
+                    break
+        spot_timeline.append({
+            'date': date,
+            'logs': logs,
+            'log_count': len(logs),
+            'total_harvest': total_harvest,
+            'has_current': has_current
+        })
+
+    prev_day_logs = None
+    next_day_logs = None
+    if current_date_index is not None:
+        if current_date_index > 0:
+            prev_date_logs = date_groups[date_list[current_date_index - 1]]
+            prev_day_logs = prev_date_logs[0]
+        if current_date_index < len(date_list) - 1:
+            next_date_logs = date_groups[date_list[current_date_index + 1]]
+            next_day_logs = next_date_logs[0]
 
     conn.close()
     return render_template('detail.html', log=log, audit_logs=audit_logs,
                            page=page, sort_by=sort_by, per_page=per_page,
-                           spot_timeline=timeline_data, current_index=current_index,
-                           prev_log=prev_log, next_log=next_log)
+                           spot_timeline=spot_timeline,
+                           current_date_index=current_date_index,
+                           current_log_in_date=current_log_in_date,
+                           prev_day_logs=prev_day_logs, next_day_logs=next_day_logs)
 
 
 @app.route('/by-spot')

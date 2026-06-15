@@ -2385,7 +2385,7 @@ footer {
 .spot-timeline-dot {
     position: absolute;
     left: -28px;
-    top: 8px;
+    top: 10px;
     width: 12px;
     height: 12px;
     border-radius: 50%;
@@ -2401,14 +2401,14 @@ footer {
     box-shadow: 0 0 0 2px #667eea;
     width: 14px;
     height: 14px;
-    top: 6px;
+    top: 9px;
     left: -29px;
 }
 
 .spot-timeline-line {
     position: absolute;
     left: -22px;
-    top: 20px;
+    top: 22px;
     bottom: 0;
     width: 2px;
     background: #e2e8f0;
@@ -2416,13 +2416,6 @@ footer {
 
 .spot-timeline-content {
     position: relative;
-}
-
-.spot-timeline-current {
-    padding: 12px 16px;
-    background: linear-gradient(135deg, #667eea15, #764ba215);
-    border: 2px solid #667eea;
-    border-radius: 10px;
 }
 
 .spot-timeline-link {
@@ -2442,6 +2435,40 @@ footer {
     box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
 }
 
+.spot-timeline-item.current .spot-timeline-content {
+    padding: 14px 16px;
+    background: linear-gradient(135deg, #667eea15, #764ba215);
+    border: 2px solid #667eea;
+    border-radius: 10px;
+}
+
+.spot-timeline-date-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+}
+
+.timeline-date-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2d3748;
+}
+
+.spot-timeline-item.current .timeline-date-text {
+    color: #553c9a;
+}
+
+.timeline-count-badge {
+    font-size: 12px;
+    padding: 2px 8px;
+    background: #edf2f7;
+    color: #718096;
+    border-radius: 10px;
+    font-weight: 500;
+}
+
 .current-badge {
     display: inline-block;
     padding: 2px 10px;
@@ -2450,18 +2477,6 @@ footer {
     font-size: 12px;
     font-weight: 600;
     border-radius: 10px;
-    margin-bottom: 6px;
-}
-
-.spot-timeline-date {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    color: #2d3748;
-    margin-bottom: 6px;
-    flex-wrap: wrap;
 }
 
 .harvest-badge {
@@ -2482,7 +2497,7 @@ footer {
     color: #742a2a;
 }
 
-.spot-timeline-meta {
+.timeline-day-summary {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
@@ -2498,6 +2513,86 @@ footer {
 
 .spot-timeline-item.current .meta-item {
     background: rgba(255, 255, 255, 0.8);
+}
+
+.timeline-day-logs {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.timeline-log-item {
+    padding: 8px 12px;
+    background: #f7fafc;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    transition: all 0.15s ease;
+}
+
+.timeline-log-item.active {
+    background: #667eea;
+    color: white;
+}
+
+.timeline-log-link {
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;
+    color: inherit;
+}
+
+.timeline-log-item:hover {
+    background: #edf2f7;
+}
+
+.timeline-log-item.active:hover {
+    background: #5a67d8;
+}
+
+.log-index {
+    font-size: 12px;
+    font-weight: 600;
+    color: #a0aec0;
+    min-width: 28px;
+}
+
+.timeline-log-item.active .log-index {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.log-meta {
+    font-size: 13px;
+    color: #718096;
+}
+
+.timeline-log-item.active .log-meta {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.log-harvest {
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: auto;
+}
+
+.log-harvest.good {
+    color: #38a169;
+}
+
+.log-harvest.bad {
+    color: #e53e3e;
+}
+
+.timeline-log-item.active .log-harvest.good,
+.timeline-log-item.active .log-harvest.bad {
+    color: #fef08a;
 }
 
 @media (max-width: 640px) {
@@ -2529,5 +2624,13 @@ footer {
 
     .spot-timeline-line {
         left: -18px;
+    }
+
+    .log-harvest {
+        margin-left: 0;
+    }
+
+    .timeline-log-item {
+        gap: 8px;
     }
 }

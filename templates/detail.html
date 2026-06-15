@@ -107,20 +107,20 @@
         </div>
     {% endif %}
 
-    {% if spot_timeline and spot_timeline|length > 1 %}
+    {% if spot_timeline %}
         <div class="spot-timeline-section">
             <div class="timeline-nav-header">
-                <h3>📍 同钓点历史记录</h3>
+                <h3>📍 同钓点出钓记录</h3>
                 <div class="timeline-nav-buttons">
-                    {% if prev_log %}
-                        <a href="{{ url_for('log_detail', log_id=prev_log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-secondary btn-nav">
+                    {% if prev_day_logs %}
+                        <a href="{{ url_for('log_detail', log_id=prev_day_logs['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-secondary btn-nav">
                             ← 上一次出钓
                         </a>
                     {% else %}
                         <span class="btn btn-secondary btn-nav disabled">← 上一次出钓</span>
                     {% endif %}
-                    {% if next_log %}
-                        <a href="{{ url_for('log_detail', log_id=next_log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-primary btn-nav">
+                    {% if next_day_logs %}
+                        <a href="{{ url_for('log_detail', log_id=next_day_logs['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-primary btn-nav">
                             下一次出钓 →
                         </a>
                     {% else %}
@@ -130,31 +130,75 @@
             </div>
 
             <div class="spot-timeline">
-                {% for item in spot_timeline %}
-                    <div class="spot-timeline-item {% if item['id'] == log['id'] %}current{% endif %}">
+                {% for day in spot_timeline %}
+                    <div class="spot-timeline-item {% if day['has_current'] %}current{% endif %}">
                         <div class="spot-timeline-dot"></div>
                         <div class="spot-timeline-line"></div>
                         <div class="spot-timeline-content">
-                            {% if item['id'] == log['id'] %}
-                                <div class="spot-timeline-current">
+                            {% if day['has_current'] %}
+                                <div class="spot-timeline-date-header">
                                     <span class="current-badge">当前</span>
-                                </div>
-                            {% else %}
-                                <a href="{{ url_for('log_detail', log_id=item['id'], page=page, sort=sort_by, per_page=per_page) }}" class="spot-timeline-link">
-                            {% endif %}
-                                <div class="spot-timeline-date">
-                                    {{ item['created_at'] }}
-                                    {% if item['harvest_value'] > 0 %}
-                                        <span class="harvest-badge good">🎣 {{ item['harvest_value'] }}</span>
+                                    <span class="timeline-date-text">{{ day['date'] }}</span>
+                                    <span class="timeline-count-badge">{{ day['log_count'] }} 条记录</span>
+                                    {% if day['total_harvest'] > 0 %}
+                                        <span class="harvest-badge good">🎣 {{ day['total_harvest'] }}</span>
                                     {% else %}
                                         <span class="harvest-badge bad">空军</span>
                                     {% endif %}
                                 </div>
-                                <div class="spot-timeline-meta">
-                                    {% if item['fish_species'] %}<span class="meta-item">🐟 {{ item['fish_species'] }}</span>{% endif %}
-                                    {% if item['bait'] %}<span class="meta-item">🐛 {{ item['bait'] }}</span>{% endif %}
+                                <div class="timeline-day-logs">
+                                    {% for item in day['logs'] %}
+                                        <div class="timeline-log-item {% if item['id'] == log['id'] %}active{% endif %}">
+                                            {% if item['id'] != log['id'] %}
+                                                <a href="{{ url_for('log_detail', log_id=item['id'], page=page, sort=sort_by, per_page=per_page) }}" class="timeline-log-link">
+                                            {% endif %}
+                                                    <span class="log-index">#{{ loop.index }}</span>
+                                                    {% if item['fish_species'] %}<span class="log-meta">🐟 {{ item['fish_species'] }}</span>{% endif %}
+                                                    {% if item['bait'] %}<span class="log-meta">🐛 {{ item['bait'] }}</span>{% endif %}
+                                                    {% if item['harvest_value'] > 0 %}
+                                                        <span class="log-harvest good">+{{ item['harvest_value'] }}</span>
+                                                    {% else %}
+                                                        <span class="log-harvest bad">空军</span>
+                                                    {% endif %}
+                                            {% if item['id'] != log['id'] %}
+                                                </a>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
                                 </div>
-                            {% if item['id'] != log['id'] %}
+                            {% else %}
+                                <a href="{{ url_for('log_detail', log_id=day['logs'][0]['id'], page=page, sort=sort_by, per_page=per_page) }}" class="spot-timeline-link">
+                                    <div class="spot-timeline-date-header">
+                                        <span class="timeline-date-text">{{ day['date'] }}</span>
+                                        <span class="timeline-count-badge">{{ day['log_count'] }} 条记录</span>
+                                        {% if day['total_harvest'] > 0 %}
+                                            <span class="harvest-badge good">🎣 {{ day['total_harvest'] }}</span>
+                                        {% else %}
+                                            <span class="harvest-badge bad">空军</span>
+                                        {% endif %}
+                                    </div>
+                                    {% if day['log_count'] > 1 %}
+                                        <div class="timeline-day-logs">
+                                            {% for item in day['logs'] %}
+                                                <div class="timeline-log-item">
+                                                    <span class="log-index">#{{ loop.index }}</span>
+                                                    {% if item['fish_species'] %}<span class="log-meta">🐟 {{ item['fish_species'] }}</span>{% endif %}
+                                                    {% if item['bait'] %}<span class="log-meta">🐛 {{ item['bait'] }}</span>{% endif %}
+                                                    {% if item['harvest_value'] > 0 %}
+                                                        <span class="log-harvest good">+{{ item['harvest_value'] }}</span>
+                                                    {% else %}
+                                                        <span class="log-harvest bad">空军</span>
+                                                    {% endif %}
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                    {% else %}
+                                        <div class="timeline-day-summary">
+                                            {% set item = day['logs'][0] %}
+                                            {% if item['fish_species'] %}<span class="meta-item">🐟 {{ item['fish_species'] }}</span>{% endif %}
+                                            {% if item['bait'] %}<span class="meta-item">🐛 {{ item['bait'] }}</span>{% endif %}
+                                        </div>
+                                    {% endif %}
                                 </a>
                             {% endif %}
                         </div>
