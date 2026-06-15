@@ -336,9 +336,37 @@ def log_detail(log_id):
         flash('记录不存在！', 'error')
         return redirect(url_for('index'))
     audit_logs = get_audit_logs(conn, log_id)
+
+    spot_timeline = conn.execute('''
+        SELECT id, created_at, harvest, fish_species, bait
+        FROM fishing_logs
+        WHERE spot = ?
+        ORDER BY created_at ASC, id ASC
+    ''', (log['spot'],)).fetchall()
+
+    prev_log = None
+    next_log = None
+    current_index = None
+    timeline_data = []
+
+    for idx, item in enumerate(spot_timeline):
+        item_dict = dict(item)
+        item_dict['harvest_value'] = parse_harvest_value(item['harvest'])
+        timeline_data.append(item_dict)
+        if item['id'] == log_id:
+            current_index = idx
+
+    if current_index is not None:
+        if current_index > 0:
+            prev_log = timeline_data[current_index - 1]
+        if current_index < len(timeline_data) - 1:
+            next_log = timeline_data[current_index + 1]
+
     conn.close()
     return render_template('detail.html', log=log, audit_logs=audit_logs,
-                           page=page, sort_by=sort_by, per_page=per_page)
+                           page=page, sort_by=sort_by, per_page=per_page,
+                           spot_timeline=timeline_data, current_index=current_index,
+                           prev_log=prev_log, next_log=next_log)
 
 
 @app.route('/by-spot')

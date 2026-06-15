@@ -2325,3 +2325,209 @@ footer {
     color: #4a5568;
     border-radius: 10px;
 }
+
+.spot-timeline-section {
+    margin-top: 30px;
+    padding-top: 25px;
+    border-top: 2px solid #e2e8f0;
+}
+
+.timeline-nav-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.timeline-nav-header h3 {
+    font-size: 18px;
+    color: #2d3748;
+    margin: 0;
+}
+
+.timeline-nav-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.btn-nav {
+    padding: 8px 16px;
+    font-size: 13px;
+}
+
+.btn-nav.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.spot-timeline {
+    position: relative;
+    padding-left: 28px;
+}
+
+.spot-timeline-item {
+    position: relative;
+    padding-bottom: 20px;
+}
+
+.spot-timeline-item:last-child {
+    padding-bottom: 0;
+}
+
+.spot-timeline-item:last-child .spot-timeline-line {
+    display: none;
+}
+
+.spot-timeline-dot {
+    position: absolute;
+    left: -28px;
+    top: 8px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #cbd5e0;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px #cbd5e0;
+    z-index: 2;
+    transition: all 0.2s ease;
+}
+
+.spot-timeline-item.current .spot-timeline-dot {
+    background: #667eea;
+    box-shadow: 0 0 0 2px #667eea;
+    width: 14px;
+    height: 14px;
+    top: 6px;
+    left: -29px;
+}
+
+.spot-timeline-line {
+    position: absolute;
+    left: -22px;
+    top: 20px;
+    bottom: 0;
+    width: 2px;
+    background: #e2e8f0;
+}
+
+.spot-timeline-content {
+    position: relative;
+}
+
+.spot-timeline-current {
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #667eea15, #764ba215);
+    border: 2px solid #667eea;
+    border-radius: 10px;
+}
+
+.spot-timeline-link {
+    display: block;
+    padding: 12px 16px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.spot-timeline-link:hover {
+    background: #f7fafc;
+    border-color: #667eea;
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.current-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: #667eea;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+    margin-bottom: 6px;
+}
+
+.spot-timeline-date {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+}
+
+.harvest-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 10px;
+}
+
+.harvest-badge.good {
+    background: #c6f6d5;
+    color: #22543d;
+}
+
+.harvest-badge.bad {
+    background: #fed7d7;
+    color: #742a2a;
+}
+
+.spot-timeline-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.meta-item {
+    font-size: 13px;
+    color: #718096;
+    padding: 2px 8px;
+    background: #f7fafc;
+    border-radius: 6px;
+}
+
+.spot-timeline-item.current .meta-item {
+    background: rgba(255, 255, 255, 0.8);
+}
+
+@media (max-width: 640px) {
+    .timeline-nav-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .timeline-nav-buttons {
+        justify-content: space-between;
+    }
+
+    .btn-nav {
+        flex: 1;
+        text-align: center;
+    }
+
+    .spot-timeline {
+        padding-left: 24px;
+    }
+
+    .spot-timeline-dot {
+        left: -24px;
+    }
+
+    .spot-timeline-item.current .spot-timeline-dot {
+        left: -25px;
+    }
+
+    .spot-timeline-line {
+        left: -18px;
+    }
+}

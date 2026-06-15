@@ -106,4 +106,61 @@
             </div>
         </div>
     {% endif %}
+
+    {% if spot_timeline and spot_timeline|length > 1 %}
+        <div class="spot-timeline-section">
+            <div class="timeline-nav-header">
+                <h3>📍 同钓点历史记录</h3>
+                <div class="timeline-nav-buttons">
+                    {% if prev_log %}
+                        <a href="{{ url_for('log_detail', log_id=prev_log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-secondary btn-nav">
+                            ← 上一次出钓
+                        </a>
+                    {% else %}
+                        <span class="btn btn-secondary btn-nav disabled">← 上一次出钓</span>
+                    {% endif %}
+                    {% if next_log %}
+                        <a href="{{ url_for('log_detail', log_id=next_log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-primary btn-nav">
+                            下一次出钓 →
+                        </a>
+                    {% else %}
+                        <span class="btn btn-secondary btn-nav disabled">下一次出钓 →</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="spot-timeline">
+                {% for item in spot_timeline %}
+                    <div class="spot-timeline-item {% if item['id'] == log['id'] %}current{% endif %}">
+                        <div class="spot-timeline-dot"></div>
+                        <div class="spot-timeline-line"></div>
+                        <div class="spot-timeline-content">
+                            {% if item['id'] == log['id'] %}
+                                <div class="spot-timeline-current">
+                                    <span class="current-badge">当前</span>
+                                </div>
+                            {% else %}
+                                <a href="{{ url_for('log_detail', log_id=item['id'], page=page, sort=sort_by, per_page=per_page) }}" class="spot-timeline-link">
+                            {% endif %}
+                                <div class="spot-timeline-date">
+                                    {{ item['created_at'] }}
+                                    {% if item['harvest_value'] > 0 %}
+                                        <span class="harvest-badge good">🎣 {{ item['harvest_value'] }}</span>
+                                    {% else %}
+                                        <span class="harvest-badge bad">空军</span>
+                                    {% endif %}
+                                </div>
+                                <div class="spot-timeline-meta">
+                                    {% if item['fish_species'] %}<span class="meta-item">🐟 {{ item['fish_species'] }}</span>{% endif %}
+                                    {% if item['bait'] %}<span class="meta-item">🐛 {{ item['bait'] }}</span>{% endif %}
+                                </div>
+                            {% if item['id'] != log['id'] %}
+                                </a>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
 {% endblock %}
