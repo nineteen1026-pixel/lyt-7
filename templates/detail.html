@@ -7,6 +7,7 @@
         <h2>记录详情</h2>
         <div>
             <a href="{{ url_for('index', page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-secondary">返回列表</a>
+            <a href="{{ url_for('edit_log', log_id=log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-primary">✏️ 编辑</a>
             <form method="POST" action="{{ url_for('delete_log', log_id=log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="inline-form" onsubmit="return confirm('确定要删除这条记录吗？');">
                 <button type="submit" class="btn btn-danger">删除</button>
             </form>
@@ -68,4 +69,41 @@
             </div>
         {% endif %}
     </div>
+
+    {% if audit_logs %}
+        <div class="audit-section">
+            <div class="audit-header">
+                <h3>📋 修改历史</h3>
+                <span class="audit-count">共 {{ audit_logs|length }} 次修改</span>
+            </div>
+            <div class="audit-timeline">
+                {% for group in audit_logs %}
+                    <div class="audit-group">
+                        <div class="audit-group-header">
+                            <span class="audit-time">🕐 {{ group.timestamp }}</span>
+                            <span class="audit-change-count">{{ group.changes|length }} 处变更</span>
+                        </div>
+                        <div class="audit-changes">
+                            {% for change in group.changes %}
+                                <div class="audit-change-item">
+                                    <div class="audit-field">{{ change.field_label }}</div>
+                                    <div class="audit-values">
+                                        <div class="audit-old-value">
+                                            <span class="value-label">修改前</span>
+                                            <span class="value-content">{{ change.old_value or '(空)' }}</span>
+                                        </div>
+                                        <div class="audit-arrow">→</div>
+                                        <div class="audit-new-value">
+                                            <span class="value-label">修改后</span>
+                                            <span class="value-content">{{ change.new_value or '(空)' }}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
 {% endblock %}

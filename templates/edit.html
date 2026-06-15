@@ -1,0 +1,244 @@
+{% extends 'base.html' %}
+
+{% block title %}编辑记录 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>编辑垂钓记录</h2>
+        <div>
+            <a href="{{ url_for('log_detail', log_id=log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-secondary">取消</a>
+        </div>
+    </div>
+
+    <form method="POST" class="log-form">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="spot">钓点 <span class="required">*</span></label>
+                <input type="text" id="spot" name="spot" placeholder="例如：东湖水库" required value="{{ log['spot'] }}">
+            </div>
+
+            <div class="form-group">
+                <label for="created_at">日期</label>
+                <input type="date" id="created_at" name="created_at" value="{{ log['created_at'] }}">
+            </div>
+
+            <div class="form-group full-width">
+                <div class="weather-toolbar">
+                    <label class="weather-label">天气信息 <span class="required">*</span></label>
+                    <div class="weather-actions">
+                        <div class="city-input-wrapper">
+                            <input type="text" id="city-input" placeholder="输入城市名，如：北京" value="{{ default_city }}">
+                            <button type="button" class="btn btn-small btn-weather-fetch" onclick="fetchCurrentWeather()">
+                                🌤 获取实时天气
+                            </button>
+                        </div>
+                        <button type="button" class="btn btn-small btn-history-toggle" onclick="toggleHistoryWeather()">
+                            📋 历史天气
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="weather">天气状况 <span class="required">*</span></label>
+                <input type="text" id="weather" name="weather" placeholder="例如：晴转多云 25℃" required value="{{ log['weather'] }}">
+            </div>
+
+            <div class="form-group">
+                <label for="temperature">温度</label>
+                <input type="text" id="temperature" name="temperature" placeholder="例如：25℃" value="{{ log['temperature'] or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="humidity">湿度</label>
+                <input type="text" id="humidity" name="humidity" placeholder="例如：65%" value="{{ log['humidity'] or '' }}">
+            </div>
+
+            <div class="form-group">
+                <label for="wind">风力</label>
+                <input type="text" id="wind" name="wind" placeholder="例如：东北风 10km/h" value="{{ log['wind'] or '' }}">
+            </div>
+
+            <div id="history-panel" class="form-group full-width history-panel" style="display:none;">
+                <div class="history-header">
+                    <label>历史天气快捷选用</label>
+                    <button type="button" class="btn btn-small history-close" onclick="toggleHistoryWeather()">×</button>
+                </div>
+                <div id="history-list" class="history-list">
+                    <div class="empty-hint">加载中...</div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="water_level">水位 <span class="required">*</span></label>
+                <input type="text" id="water_level" name="water_level" placeholder="例如：正常/涨水/退水" required value="{{ log['water_level'] }}">
+            </div>
+
+            <div class="form-group">
+                <label for="bait">饵料 <span class="required">*</span></label>
+                <div class="bait-select-wrapper">
+                    <select id="bait-select" onchange="handleBaitSelect()">
+                        <option value="">-- 选择饵料 --</option>
+                        {% if bait_list %}
+                            {% for bait in bait_list %}
+                                <option value="{{ bait.name }}" {% if log['bait'] == bait.name %}selected{% endif %}>{{ bait.name }}{% if bait.brand %} ({{ bait.brand }}){% endif %}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <input type="text" id="bait" name="bait" placeholder="选择或输入饵料" required value="{{ log['bait'] }}">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="fish_species">鱼种 <span class="required">*</span></label>
+                <input type="text" id="fish_species" name="fish_species" placeholder="例如：鲫鱼、鲤鱼、白条" required value="{{ log['fish_species'] }}">
+            </div>
+
+            <div class="form-group full-width">
+                <label for="harvest">收获情况 <span class="required">*</span></label>
+                <textarea id="harvest" name="harvest" rows="3" placeholder="例如：鲫鱼5条约2斤，白条若干" required>{{ log['harvest'] }}</textarea>
+            </div>
+
+            <div class="form-group full-width">
+                <label for="next_strategy">下次策略</label>
+                <textarea id="next_strategy" name="next_strategy" rows="3" placeholder="例如：换更深的钓位，尝试用玉米钓草鱼">{{ log['next_strategy'] or '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">保存修改</button>
+            <a href="{{ url_for('log_detail', log_id=log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-secondary">取消</a>
+        </div>
+    </form>
+
+    <script>
+    function handleBaitSelect() {
+        var select = document.getElementById('bait-select');
+        var input = document.getElementById('bait');
+        if (select.value) {
+            input.value = select.value;
+            select.value = '';
+        }
+    }
+
+    function showWeatherMessage(msg, type) {
+        var panel = document.getElementById('history-panel');
+        var listEl = document.getElementById('history-list');
+        if (!panel.style.display || panel.style.display === 'none') {
+            panel.style.display = 'block';
+        }
+        listEl.innerHTML = '<div class="weather-message ' + (type || 'info') + '">' + msg + '</div>';
+    }
+
+    function fetchCurrentWeather() {
+        var city = document.getElementById('city-input').value.trim();
+        if (!city) {
+            alert('请输入城市名称');
+            return;
+        }
+
+        var btn = document.querySelector('.btn-weather-fetch');
+        var originalText = btn.textContent;
+        btn.textContent = '获取中...';
+        btn.disabled = true;
+
+        fetch('/api/weather/current?city=' + encodeURIComponent(city))
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var w = data.data;
+                    document.getElementById('weather').value = w.weather || '';
+                    document.getElementById('temperature').value = w.temperature || '';
+                    document.getElementById('humidity').value = w.humidity || '';
+                    document.getElementById('wind').value = w.wind || '';
+                    showWeatherMessage('✓ 已填充 ' + w.city + ' 的实时天气数据', 'success');
+                } else {
+                    showWeatherMessage('✗ ' + (data.message || '获取天气失败'), 'error');
+                }
+            })
+            .catch(function(err) {
+                showWeatherMessage('✗ 请求失败：' + err.message, 'error');
+            })
+            .finally(function() {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            });
+    }
+
+    var historyLoaded = false;
+
+    function toggleHistoryWeather() {
+        var panel = document.getElementById('history-panel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+            if (!historyLoaded) {
+                loadHistoryWeather();
+            }
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    function loadHistoryWeather() {
+        var listEl = document.getElementById('history-list');
+        listEl.innerHTML = '<div class="empty-hint">加载中...</div>';
+
+        fetch('/api/weather/history')
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                historyLoaded = true;
+                if (data.success && data.data && data.data.length > 0) {
+                    renderHistoryList(data.data);
+                } else {
+                    listEl.innerHTML = '<div class="empty-hint">暂无历史天气记录</div>';
+                }
+            })
+            .catch(function(err) {
+                listEl.innerHTML = '<div class="empty-hint">加载失败：' + err.message + '</div>';
+            });
+    }
+
+    window._historyCache = [];
+
+    function renderHistoryList(items) {
+        window._historyCache = items;
+        var listEl = document.getElementById('history-list');
+        var html = '';
+        items.forEach(function(item, idx) {
+            html += '<div class="history-item" onclick="applyHistoryWeather(' + idx + ')">';
+            html += '<div class="history-item-main">';
+            html += '<span class="history-weather">' + escapeHtml(item.weather) + '</span>';
+            if (item.temperature) {
+                html += '<span class="history-tag">🌡 ' + escapeHtml(item.temperature) + '</span>';
+            }
+            if (item.humidity) {
+                html += '<span class="history-tag">💧 ' + escapeHtml(item.humidity) + '</span>';
+            }
+            if (item.wind) {
+                html += '<span class="history-tag">🌬 ' + escapeHtml(item.wind) + '</span>';
+            }
+            html += '</div>';
+            if (item.date) {
+                html += '<div class="history-item-date">记录于 ' + escapeHtml(item.date) + '</div>';
+            }
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+    }
+
+    function applyHistoryWeather(idx) {
+        var item = (window._historyCache || [])[idx];
+        if (!item) return;
+        document.getElementById('weather').value = item.weather || '';
+        document.getElementById('temperature').value = item.temperature || '';
+        document.getElementById('humidity').value = item.humidity || '';
+        document.getElementById('wind').value = item.wind || '';
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str || ''));
+        return div.innerHTML;
+    }
+    </script>
+{% endblock %}

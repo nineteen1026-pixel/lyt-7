@@ -85,8 +85,148 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_id INTEGER NOT NULL,
+            field_name TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (log_id) REFERENCES fishing_logs(id) ON DELETE CASCADE
+        )
+    ''')
     conn.commit()
     conn.close()
+
+
+FIELD_LABELS = {
+    'spot': '钓点',
+    'weather': '天气',
+    'water_level': '水位',
+    'bait': '饵料',
+    'fish_species': '鱼种',
+    'harvest': '收获情况',
+    'next_strategy': '下次策略',
+    'created_at': '日期',
+    'temperature': '温度',
+    'humidity': '湿度',
+    'wind': '风力'
+}
+
+EDITABLE_FIELDS = [
+    'spot', 'weather', 'water_level', 'bait', 'fish_species',
+    'harvest', 'next_strategy', 'created_at', 'temperature',
+    'humidity', 'wind'
+]
+
+
+def record_audit_log(conn, log_id, field_name, old_value, new_value):
+    if old_value != new_value:
+        conn.execute('''
+            INSERT INTO audit_logs (log_id, field_name, old_value, new_value)
+            VALUES (?, ?, ?, ?)
+        ''', (log_id, field_name, old_value, new_value))
+
+
+def get_audit_logs(conn, log_id):
+    rows = conn.execute('''
+        SELECT * FROM audit_logs
+        WHERE log_id = ?
+        ORDER BY changed_at DESC, id DESC
+    ''', (log_id,)).fetchall()
+
+    logs = []
+    current_group = None
+    for row in rows:
+        ts = row['changed_at']
+        if current_group is None or current_group['timestamp'] != ts:
+            if current_group is not None:
+                logs.append(current_group)
+            current_group = {
+                'timestamp': ts,
+                'changes': []
+            }
+        current_group['changes'].append({
+            'field': row['field_name'],
+            'field_label': FIELD_LABELS.get(row['field_name'], row['field_name']),
+            'old_value': row['old_value'],
+            'new_value': row['new_value']
+        })
+    if current_group is not None:
+        logs.append(current_group)
+    return logs
+
+
+@app.route('/log/<int:log_id>/edit', methods=['GET', 'POST'])
+def edit_log(log_id):
+    page = request.args.get('page', 1, type=int)
+    sort_by = request.args.get('sort', 'date_desc')
+    per_page = request.args.get('per_page', 20, type=int)
+
+    conn = get_db()
+    log = conn.execute('SELECT * FROM fishing_logs WHERE id = ?', (log_id,)).fetchone()
+    bait_list = get_all_baits(conn)
+
+    if log is None:
+        conn.close()
+        flash('记录不存在！', 'error')
+        return redirect(url_for('index', page=page, sort=sort_by, per_page=per_page))
+
+    if request.method == 'POST':
+        spot = request.form['spot'].strip()
+        weather = request.form['weather'].strip()
+        water_level = request.form['water_level'].strip()
+        bait = request.form['bait'].strip()
+        fish_species = request.form['fish_species'].strip()
+        harvest = request.form['harvest'].strip()
+        next_strategy = request.form['next_strategy'].strip()
+        created_at = request.form['created_at'] or datetime.now().strftime('%Y-%m-%d')
+        temperature = request.form.get('temperature', '').strip()
+        humidity = request.form.get('humidity', '').strip()
+        wind = request.form.get('wind', '').strip()
+
+        if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
+            flash('请填写所有必填项！', 'error')
+        else:
+            old_data = dict(log)
+            new_data = {
+                'spot': spot,
+                'weather': weather,
+                'water_level': water_level,
+                'bait': bait,
+                'fish_species': fish_species,
+                'harvest': harvest,
+                'next_strategy': next_strategy,
+                'created_at': created_at,
+                'temperature': temperature or None,
+                'humidity': humidity or None,
+                'wind': wind or None
+            }
+
+            for field in EDITABLE_FIELDS:
+                old_val = old_data.get(field)
+                new_val = new_data.get(field)
+                record_audit_log(conn, log_id, field, old_val, new_val)
+
+            conn.execute('''
+                UPDATE fishing_logs
+                SET spot = ?, weather = ?, water_level = ?, bait = ?, fish_species = ?,
+                    harvest = ?, next_strategy = ?, created_at = ?, temperature = ?,
+                    humidity = ?, wind = ?
+                WHERE id = ?
+            ''', (spot, weather, water_level, bait, fish_species, harvest,
+                  next_strategy, created_at, temperature or None, humidity or None,
+                  wind or None, log_id))
+            conn.commit()
+            flash('记录更新成功！', 'success')
+            conn.close()
+            return redirect(url_for('log_detail', log_id=log_id, page=page, sort=sort_by, per_page=per_page))
+
+    conn.close()
+    return render_template('edit.html', log=log, bait_list=bait_list,
+                           page=page, sort_by=sort_by, per_page=per_page,
+                           default_city=WEATHER_API_CONFIG['city'])
 
 
 @app.route('/')
@@ -173,11 +313,14 @@ def log_detail(log_id):
 
     conn = get_db()
     log = conn.execute('SELECT * FROM fishing_logs WHERE id = ?', (log_id,)).fetchone()
-    conn.close()
     if log is None:
+        conn.close()
         flash('记录不存在！', 'error')
         return redirect(url_for('index'))
-    return render_template('detail.html', log=log, page=page, sort_by=sort_by, per_page=per_page)
+    audit_logs = get_audit_logs(conn, log_id)
+    conn.close()
+    return render_template('detail.html', log=log, audit_logs=audit_logs,
+                           page=page, sort_by=sort_by, per_page=per_page)
 
 
 @app.route('/by-spot')
