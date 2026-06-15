@@ -1,0 +1,286 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if invitation %}编辑邀约{% else %}发起邀约{% endif %} - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>{% if invitation %}编辑邀约{% else %}发起约钓邀约{% endif %}</h2>
+    </div>
+
+    <form method="POST" class="log-form" id="invitationForm">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="spot">钓点 <span class="required">*</span></label>
+                <div class="spot-input-wrapper">
+                    {% if spot_list %}
+                    <select id="spot_select" class="spot-select" onchange="onSpotSelectChange()">
+                        <option value="">-- 选择已有钓点 --</option>
+                        {% for s in spot_list %}
+                        <option value="{{ s }}" {% if invitation and invitation['spot'] == s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                        <option value="__custom__" {% if invitation and not spot_list or (spot_list and invitation and invitation['spot'] not in spot_list) %}selected{% endif %}>✏️ 自定义钓点...</option>
+                    </select>
+                    {% endif %}
+                    <div class="spot-autocomplete-wrapper" id="spot_custom_wrapper" {% if spot_list and invitation and invitation['spot'] in spot_list %}style="display:none"{% endif %}>
+                        <input type="text" id="spot" name="spot" placeholder="输入钓点名称搜索..." autocomplete="off"
+                               value="{{ invitation['spot'] if invitation else '' }}" required>
+                        <div id="spot-suggestions" class="spot-suggestions"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="date">日期 <span class="required">*</span></label>
+                <input type="date" id="date" name="date"
+                       value="{{ invitation['date'] if invitation else '' }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="status">状态</label>
+                <select id="status" name="status">
+                    <option value="planned" {% if invitation and invitation['status'] == 'planned' %}selected{% endif %}>📋 计划中</option>
+                    <option value="ongoing" {% if invitation and invitation['status'] == 'ongoing' %}selected{% endif %}>🎣 进行中</option>
+                    <option value="completed" {% if invitation and invitation['status'] == 'completed' %}selected{% endif %}>✅ 已完成</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="total_cost">总费用 (元)</label>
+                <input type="number" id="total_cost" name="total_cost" step="0.01" min="0" placeholder="0.00"
+                       value="{{ invitation['total_cost'] if invitation and invitation['total_cost'] else '' }}">
+            </div>
+
+            <div class="form-group full-width">
+                <label for="notes">备注</label>
+                <textarea id="notes" name="notes" rows="3" placeholder="约钓备注、集合时间地点等">{{ invitation['notes'] if invitation and invitation['notes'] else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="members-section">
+            <div class="members-header">
+                <h3>同行钓友</h3>
+                <div class="members-header-actions">
+                    <button type="button" class="btn btn-small" onclick="splitCostEvenly()">💰 平均分摊</button>
+                    <button type="button" class="btn btn-small btn-primary" onclick="addMemberRow()">+ 添加钓友</button>
+                </div>
+            </div>
+
+            <div id="members-container">
+                {% if members %}
+                    {% for m in members %}
+                        <div class="member-row">
+                            <div class="member-row-fields">
+                                <div class="member-field">
+                                    <label>姓名 <span class="required">*</span></label>
+                                    <input type="text" name="member_name[]" value="{{ m['name'] }}" placeholder="钓友姓名" required>
+                                </div>
+                                <div class="member-field member-field-harvest">
+                                    <label>收获明细</label>
+                                    <input type="text" name="member_harvest[]" value="{{ m['harvest_detail'] or '' }}" placeholder="例如：鲫鱼3条约1.5斤">
+                                </div>
+                                <div class="member-field member-field-cost">
+                                    <label>费用分摊 (元)</label>
+                                    <input type="number" name="member_cost[]" step="0.01" min="0" value="{{ m['cost_share'] or 0 }}">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-small btn-danger member-remove-btn" onclick="removeMemberRow(this)">移除</button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            </div>
+
+            <div id="member-empty-hint" class="empty-hint" {% if members %}style="display:none"{% endif %}>
+                暂未添加钓友，点击上方按钮添加
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <button type="submit" class="btn btn-primary">{% if invitation %}保存修改{% else %}创建邀约{% endif %}</button>
+            <a href="{{ url_for('invitations_list') }}" class="btn btn-secondary">取消</a>
+        </div>
+    </form>
+
+    <script>
+    var spotSearchTimer = null;
+    var spotCache = [];
+
+    function onSpotSelectChange() {
+        var selectEl = document.getElementById('spot_select');
+        var customWrapper = document.getElementById('spot_custom_wrapper');
+        var spotInput = document.getElementById('spot');
+
+        if (!selectEl) return;
+
+        var value = selectEl.value;
+        if (value === '__custom__') {
+            customWrapper.style.display = 'block';
+            spotInput.focus();
+        } else if (value) {
+            customWrapper.style.display = 'none';
+            spotInput.value = value;
+        } else {
+            customWrapper.style.display = 'block';
+            spotInput.value = '';
+        }
+    }
+
+    document.getElementById('spot').addEventListener('input', function(e) {
+        clearTimeout(spotSearchTimer);
+        var val = e.target.value.trim();
+        spotSearchTimer = setTimeout(function() {
+            searchSpots(val);
+        }, 200);
+    });
+
+    document.getElementById('spot').addEventListener('focus', function(e) {
+        var val = e.target.value.trim();
+        searchSpots(val);
+    });
+
+    document.addEventListener('click', function(e) {
+        var wrapper = document.querySelector('.spot-autocomplete-wrapper');
+        if (wrapper && !wrapper.contains(e.target)) {
+            var suggestions = document.getElementById('spot-suggestions');
+            if (suggestions) {
+                suggestions.style.display = 'none';
+            }
+        }
+    });
+
+    function searchSpots(keyword) {
+        var suggestions = document.getElementById('spot-suggestions');
+        if (!suggestions) return;
+
+        var url = '/api/spots/search';
+        if (keyword) {
+            url += '?q=' + encodeURIComponent(keyword);
+        }
+        fetch(url)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success && data.data && data.data.length > 0) {
+                    spotCache = data.data;
+                    renderSpotSuggestions(data.data);
+                } else {
+                    spotCache = [];
+                    suggestions.style.display = 'none';
+                }
+            })
+            .catch(function() {
+                suggestions.style.display = 'none';
+            });
+    }
+
+    function renderSpotSuggestions(spots) {
+        var listEl = document.getElementById('spot-suggestions');
+        if (!listEl) return;
+        var html = '';
+        spots.forEach(function(spot, idx) {
+            html += '<div class="spot-suggestion-item" onclick="selectSpot(' + idx + ')">';
+            html += '<div class="spot-suggestion-name">' + escapeHtml(spot.name) + '</div>';
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+        listEl.style.display = 'block';
+    }
+
+    function selectSpot(idx) {
+        var spot = spotCache[idx];
+        if (!spot) return;
+        document.getElementById('spot').value = spot.name;
+        document.getElementById('spot-suggestions').style.display = 'none';
+
+        var selectEl = document.getElementById('spot_select');
+        if (selectEl) {
+            var found = false;
+            for (var i = 0; i < selectEl.options.length; i++) {
+                if (selectEl.options[i].value === spot.name) {
+                    selectEl.selectedIndex = i;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                selectEl.value = '__custom__';
+            }
+            onSpotSelectChange();
+        }
+    }
+
+    function addMemberRow() {
+        var container = document.getElementById('members-container');
+        var hint = document.getElementById('member-empty-hint');
+        hint.style.display = 'none';
+
+        var row = document.createElement('div');
+        row.className = 'member-row';
+        row.innerHTML = '<div class="member-row-fields">' +
+            '<div class="member-field"><label>姓名 <span class="required">*</span></label><input type="text" name="member_name[]" placeholder="钓友姓名" required></div>' +
+            '<div class="member-field member-field-harvest"><label>收获明细</label><input type="text" name="member_harvest[]" placeholder="例如：鲫鱼3条约1.5斤"></div>' +
+            '<div class="member-field member-field-cost"><label>费用分摊 (元)</label><input type="number" name="member_cost[]" step="0.01" min="0" value="0"></div>' +
+            '</div>' +
+            '<button type="button" class="btn btn-small btn-danger member-remove-btn" onclick="removeMemberRow(this)">移除</button>';
+        container.appendChild(row);
+    }
+
+    function removeMemberRow(btn) {
+        var row = btn.closest('.member-row');
+        row.remove();
+        var container = document.getElementById('members-container');
+        if (container.children.length === 0) {
+            document.getElementById('member-empty-hint').style.display = 'block';
+        }
+    }
+
+    function splitCostEvenly() {
+        var totalCostInput = document.getElementById('total_cost');
+        var totalCost = parseFloat(totalCostInput.value) || 0;
+
+        var memberRows = document.querySelectorAll('#members-container .member-row');
+        var memberCount = memberRows.length;
+
+        if (memberCount === 0) {
+            alert('请先添加钓友！');
+            return;
+        }
+
+        if (totalCost <= 0) {
+            alert('请先填写总费用！');
+            return;
+        }
+
+        var avgShare = Math.floor((totalCost / memberCount) * 100) / 100;
+        var remainder = Math.floor((totalCost - avgShare * memberCount) * 100) / 100;
+
+        memberRows.forEach(function(row, idx) {
+            var costInput = row.querySelector('input[name="member_cost[]"]');
+            if (costInput) {
+                var share = avgShare;
+                if (idx === 0 && remainder > 0) {
+                    share = Math.floor((share + remainder) * 100) / 100;
+                }
+                costInput.value = share.toFixed(2);
+            }
+        });
+    }
+
+    function escapeHtml(str) {
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(str || ''));
+        return div.innerHTML;
+    }
+
+    (function() {
+        var dateInput = document.getElementById('date');
+        if (!dateInput.value) {
+            var today = new Date().toISOString().split('T')[0];
+            dateInput.value = today;
+        }
+
+        var selectEl = document.getElementById('spot_select');
+        if (selectEl && selectEl.value && selectEl.value !== '__custom__') {
+            document.getElementById('spot').value = selectEl.value;
+        }
+    })();
+    </script>
+{% endblock %}

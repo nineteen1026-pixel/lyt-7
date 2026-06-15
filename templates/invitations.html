@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}约钓邀约 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🤝 约钓邀约</h2>
+        <a href="{{ url_for('add_invitation') }}" class="btn btn-primary">+ 发起邀约</a>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">状态：</span>
+            <a href="{{ url_for('invitations_list', status='all') }}" class="filter-btn {% if filter_status == 'all' %}active{% endif %}">全部</a>
+            <a href="{{ url_for('invitations_list', status='planned') }}" class="filter-btn {% if filter_status == 'planned' %}active{% endif %}">📋 计划中</a>
+            <a href="{{ url_for('invitations_list', status='ongoing') }}" class="filter-btn {% if filter_status == 'ongoing' %}active{% endif %}">🎣 进行中</a>
+            <a href="{{ url_for('invitations_list', status='completed') }}" class="filter-btn {% if filter_status == 'completed' %}active{% endif %}">✅ 已完成</a>
+        </div>
+    </div>
+
+    {% if invitations %}
+        <div class="invitation-list">
+            {% for inv in invitations %}
+                <div class="invitation-card">
+                    <div class="invitation-card-header">
+                        <div class="invitation-card-title">
+                            <span class="invitation-spot">📍 {{ inv['spot'] }}</span>
+                            <span class="invitation-date">📅 {{ inv['date'] }}</span>
+                        </div>
+                        <span class="invitation-status status-{{ inv['status'] }}">
+                            {% if inv['status'] == 'planned' %}📋 计划中
+                            {% elif inv['status'] == 'ongoing' %}🎣 进行中
+                            {% elif inv['status'] == 'completed' %}✅ 已完成
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="invitation-card-body">
+                        <div class="invitation-meta">
+                            <span class="meta-item">👥 {{ inv['member_count'] }} 人</span>
+                            {% if inv['total_cost'] and inv['total_cost'] > 0 %}
+                                <span class="meta-item">💰 总费用 ¥{{ inv['total_cost'] }}</span>
+                            {% endif %}
+                        </div>
+                        {% if inv['members'] %}
+                            <div class="invitation-member-preview">
+                                {% for m in inv['members'] %}
+                                    <span class="member-tag">{{ m['name'] }}</span>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        {% if inv['notes'] %}
+                            <div class="invitation-notes">{{ inv['notes'] }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="invitation-card-footer">
+                        <a href="{{ url_for('invitations_detail', inv_id=inv['id']) }}" class="btn btn-small">查看详情</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>还没有约钓邀约，快去发起第一个吧！</p>
+            <a href="{{ url_for('add_invitation') }}" class="btn btn-primary">+ 发起邀约</a>
+        </div>
+    {% endif %}
+{% endblock %}

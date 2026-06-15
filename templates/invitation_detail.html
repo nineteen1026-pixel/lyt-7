@@ -1,0 +1,216 @@
+{% extends 'base.html' %}
+
+{% block title %}邀约详情 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>邀约详情</h2>
+        <div class="page-header-actions">
+            <a href="{{ url_for('edit_invitation', inv_id=invitation['id']) }}" class="btn btn-primary">✏️ 编辑</a>
+            <form method="POST" action="{{ url_for('delete_invitation', inv_id=invitation['id']) }}" class="inline-form" onsubmit="return confirm('确定要删除此邀约吗？')">
+                <button type="submit" class="btn btn-danger">🗑 删除</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="invitation-detail-card">
+        <div class="invitation-detail-header">
+            <div class="invitation-detail-title">
+                <span class="invitation-spot">📍 {{ invitation['spot'] }}</span>
+                <span class="invitation-date">📅 {{ invitation['date'] }}</span>
+            </div>
+            <div class="invitation-status-actions">
+                <form method="POST" action="{{ url_for('update_invitation_status', inv_id=invitation['id']) }}" class="status-form">
+                    <select name="status" onchange="this.form.submit()" class="status-select">
+                        <option value="planned" {% if invitation['status'] == 'planned' %}selected{% endif %}>📋 计划中</option>
+                        <option value="ongoing" {% if invitation['status'] == 'ongoing' %}selected{% endif %}>🎣 进行中</option>
+                        <option value="completed" {% if invitation['status'] == 'completed' %}selected{% endif %}>✅ 已完成</option>
+                    </select>
+                </form>
+            </div>
+        </div>
+
+        <div class="invitation-detail-grid">
+            <div class="detail-item">
+                <span class="detail-label">钓点</span>
+                <span class="detail-value">{{ invitation['spot'] }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">日期</span>
+                <span class="detail-value">{{ invitation['date'] }}</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">同行人数</span>
+                <span class="detail-value">{{ invitation['member_count'] }} 人</span>
+            </div>
+            <div class="detail-item">
+                <span class="detail-label">总费用</span>
+                <span class="detail-value">{% if invitation['total_cost'] %}¥{{ invitation['total_cost'] }}{% else %}未记录{% endif %}</span>
+            </div>
+            {% if invitation['total_cost'] and invitation['total_cost'] > 0 %}
+            <div class="detail-item">
+                <span class="detail-label">人均费用</span>
+                <span class="detail-value">¥{{ invitation['avg_cost'] }}</span>
+            </div>
+            {% endif %}
+        </div>
+
+        {% if invitation['notes'] %}
+            <div class="detail-section">
+                <h3>📝 备注</h3>
+                <p class="detail-text">{{ invitation['notes'] }}</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="members-section">
+        <div class="members-header">
+            <h3>👥 同行钓友 ({{ invitation['member_count'] }}人)</h3>
+            <div class="members-header-actions">
+                {% if invitation['members'] and invitation['total_cost'] and invitation['total_cost'] > 0 %}
+                <form method="POST" action="{{ url_for('split_invitation_cost', inv_id=invitation['id']) }}" class="inline-form">
+                    <button type="submit" class="btn btn-small" onclick="return confirm('确定要平均分摊费用吗？')">💰 平均分摊</button>
+                </form>
+                {% endif %}
+                <button type="button" class="btn btn-small btn-primary" onclick="toggleAddMember()">+ 添加钓友</button>
+            </div>
+        </div>
+
+        <div id="add-member-panel" class="add-member-panel" style="display:none;">
+            <form method="POST" action="{{ url_for('add_invitation_member', inv_id=invitation['id']) }}" class="add-member-form">
+                <div class="add-member-fields">
+                    <div class="form-group">
+                        <label>姓名 <span class="required">*</span></label>
+                        <input type="text" name="name" placeholder="钓友姓名" required>
+                    </div>
+                    <div class="form-group">
+                        <label>收获明细</label>
+                        <input type="text" name="harvest_detail" placeholder="例如：鲫鱼3条约1.5斤">
+                    </div>
+                    <div class="form-group">
+                        <label>费用分摊 (元)</label>
+                        <input type="number" name="cost_share" step="0.01" min="0" value="0">
+                    </div>
+                </div>
+                <div class="add-member-actions">
+                    <button type="submit" class="btn btn-primary btn-small">添加</button>
+                    <button type="button" class="btn btn-secondary btn-small" onclick="toggleAddMember()">取消</button>
+                </div>
+            </form>
+        </div>
+
+        {% if invitation['members'] %}
+            <div class="members-table-wrapper">
+                <table class="ranking-table members-table">
+                    <thead>
+                        <tr>
+                            <th>钓友</th>
+                            <th>收获明细</th>
+                            <th>费用分摊</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in invitation['members'] %}
+                            <tr id="member-row-{{ m['id'] }}">
+                                <td class="member-name-cell">
+                                    <strong>{{ m['name'] }}</strong>
+                                </td>
+                                <td>
+                                    {% if m['harvest_detail'] %}
+                                        <span class="harvest-text">{{ m['harvest_detail'] }}</span>
+                                    {% else %}
+                                        <span class="no-data">未记录</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if m['cost_share'] and m['cost_share'] > 0 %}
+                                        <span class="cost-text">¥{{ m['cost_share'] }}</span>
+                                    {% else %}
+                                        <span class="no-data">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <button type="button" class="btn btn-small" onclick="toggleEditMember({{ m['id'] }}, '{{ m['name']|e }}', '{{ m['harvest_detail']|e }}', {{ m['cost_share'] or 0 }})">编辑</button>
+                                    <form method="POST" action="{{ url_for('delete_invitation_member', inv_id=invitation['id'], member_id=m['id']) }}" class="inline-form" onsubmit="return confirm('确定要移除此钓友吗？')">
+                                        <button type="submit" class="btn btn-small btn-danger">移除</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="members-total-row">
+                            <td><strong>合计</strong></td>
+                            <td></td>
+                            <td><strong>¥{{ invitation['members'] | sum(attribute='cost_share') }}</strong></td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-hint">暂无同行钓友，点击上方按钮添加</div>
+        {% endif %}
+    </div>
+
+    <div id="edit-member-modal" class="modal-overlay" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>编辑钓友信息</h3>
+                <button type="button" class="modal-close" onclick="closeEditMember()">&times;</button>
+            </div>
+            <form method="POST" id="edit-member-form" class="modal-body">
+                <div class="form-group">
+                    <label>姓名 <span class="required">*</span></label>
+                    <input type="text" id="edit-member-name" name="name" required>
+                </div>
+                <div class="form-group">
+                    <label>收获明细</label>
+                    <input type="text" id="edit-member-harvest" name="harvest_detail">
+                </div>
+                <div class="form-group">
+                    <label>费用分摊 (元)</label>
+                    <input type="number" id="edit-member-cost" name="cost_share" step="0.01" min="0">
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">保存</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeEditMember()">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div style="margin-top: 20px;">
+        <a href="{{ url_for('invitations_list') }}" class="btn btn-secondary">← 返回邀约列表</a>
+    </div>
+
+    <script>
+    function toggleAddMember() {
+        var panel = document.getElementById('add-member-panel');
+        if (panel.style.display === 'none') {
+            panel.style.display = 'block';
+        } else {
+            panel.style.display = 'none';
+        }
+    }
+
+    function toggleEditMember(id, name, harvest, cost) {
+        document.getElementById('edit-member-name').value = name;
+        document.getElementById('edit-member-harvest').value = harvest;
+        document.getElementById('edit-member-cost').value = cost;
+        document.getElementById('edit-member-form').action = '{{ url_for("edit_invitation_member", inv_id=invitation["id"], member_id=0) }}'.replace('/0', '/' + id);
+        document.getElementById('edit-member-modal').style.display = 'flex';
+    }
+
+    function closeEditMember() {
+        document.getElementById('edit-member-modal').style.display = 'none';
+    }
+
+    document.getElementById('edit-member-modal').addEventListener('click', function(e) {
+        if (e.target === this) {
+            closeEditMember();
+        }
+    });
+    </script>
+{% endblock %}

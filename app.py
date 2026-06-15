@@ -98,6 +98,28 @@ def init_db():
             FOREIGN KEY (log_id) REFERENCES fishing_logs(id) ON DELETE CASCADE
         )
     ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS fishing_invitations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            spot TEXT NOT NULL,
+            date DATE NOT NULL,
+            notes TEXT,
+            status TEXT DEFAULT 'planned',
+            total_cost REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS invitation_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            invitation_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            harvest_detail TEXT,
+            cost_share REAL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (invitation_id) REFERENCES fishing_invitations(id) ON DELETE CASCADE
+        )
+    ''')
     if not column_exists(conn, 'audit_logs', 'batch_id'):
         conn.execute('ALTER TABLE audit_logs ADD COLUMN batch_id TEXT DEFAULT \'legacy\' NOT NULL')
         conn.execute('UPDATE audit_logs SET batch_id = \'legacy\' WHERE batch_id IS NULL OR batch_id = \'\'')
@@ -795,6 +817,311 @@ def parse_harvest_value(harvest_str):
             pass
 
     return 0
+
+
+@app.route('/invitations')
+def invitations_list():
+    conn = get_db()
+    filter_status = request.args.get('status', 'all')
+
+    query = '''
+        SELECT i.*,
+               (SELECT COUNT(*) FROM invitation_members m WHERE m.invitation_id = i.id) as member_count
+        FROM fishing_invitations i
+    '''
+    params = []
+    conditions = []
+
+    if filter_status != 'all':
+        conditions.append('i.status = ?')
+        params.append(filter_status)
+
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+
+    query += ' ORDER BY i.date DESC, i.id DESC'
+
+    invitations = conn.execute(query, params).fetchall()
+
+    inv_list = []
+    for inv in invitations:
+        inv_dict = dict(inv)
+        members = conn.execute(
+            'SELECT * FROM invitation_members WHERE invitation_id = ? ORDER BY id',
+            (inv['id'],)
+        ).fetchall()
+        inv_dict['members'] = [dict(m) for m in members]
+        inv_list.append(inv_dict)
+
+    conn.close()
+    return render_template('invitations.html', invitations=inv_list, filter_status=filter_status)
+
+
+def get_all_spot_names(conn):
+    rows = conn.execute('SELECT name FROM fishing_spots ORDER BY name').fetchall()
+    return [row['name'] for row in rows]
+
+
+@app.route('/invitations/add', methods=['GET', 'POST'])
+def add_invitation():
+    conn = get_db()
+    spot_list = get_all_spot_names(conn)
+
+    if request.method == 'POST':
+        spot = request.form['spot'].strip()
+        date = request.form['date'].strip()
+        notes = request.form.get('notes', '').strip()
+        total_cost = request.form.get('total_cost', '0').strip()
+        status = request.form.get('status', 'planned').strip()
+
+        member_names = request.form.getlist('member_name[]')
+        member_harvests = request.form.getlist('member_harvest[]')
+        member_costs = request.form.getlist('member_cost[]')
+
+        if not spot or not date:
+            flash('请填写钓点和日期！', 'error')
+        else:
+            cost = float(total_cost) if total_cost else 0
+            cursor = conn.execute('''
+                INSERT INTO fishing_invitations (spot, date, notes, status, total_cost)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (spot, date, notes or None, status, cost))
+            inv_id = cursor.lastrowid
+
+            for i, name in enumerate(member_names):
+                name = name.strip()
+                if name:
+                    harvest = member_harvests[i].strip() if i < len(member_harvests) else ''
+                    share = float(member_costs[i].strip() or 0) if i < len(member_costs) else 0
+                    conn.execute('''
+                        INSERT INTO invitation_members (invitation_id, name, harvest_detail, cost_share)
+                        VALUES (?, ?, ?, ?)
+                    ''', (inv_id, name, harvest or None, share))
+
+            conn.commit()
+            conn.close()
+            flash('邀约创建成功！', 'success')
+            return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+    conn.close()
+    return render_template('invitation_form.html', invitation=None, members=[], spot_list=spot_list)
+
+
+@app.route('/invitations/<int:inv_id>')
+def invitations_detail(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT * FROM fishing_invitations WHERE id = ?', (inv_id,)).fetchone()
+    if inv is None:
+        conn.close()
+        flash('邀约不存在！', 'error')
+        return redirect(url_for('invitations_list'))
+
+    inv_dict = dict(inv)
+    members = conn.execute(
+        'SELECT * FROM invitation_members WHERE invitation_id = ? ORDER BY id',
+        (inv_id,)
+    ).fetchall()
+    inv_dict['members'] = [dict(m) for m in members]
+    inv_dict['member_count'] = len(members)
+
+    total_cost = inv_dict['total_cost'] or 0
+    member_count = max(1, len(members))
+    inv_dict['avg_cost'] = round(total_cost / member_count, 2) if total_cost > 0 else 0
+
+    conn.close()
+    return render_template('invitation_detail.html', invitation=inv_dict)
+
+
+@app.route('/invitations/<int:inv_id>/edit', methods=['GET', 'POST'])
+def edit_invitation(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT * FROM fishing_invitations WHERE id = ?', (inv_id,)).fetchone()
+    spot_list = get_all_spot_names(conn)
+
+    if inv is None:
+        conn.close()
+        flash('邀约不存在！', 'error')
+        return redirect(url_for('invitations_list'))
+
+    members = conn.execute(
+        'SELECT * FROM invitation_members WHERE invitation_id = ? ORDER BY id',
+        (inv_id,)
+    ).fetchall()
+
+    if request.method == 'POST':
+        spot = request.form['spot'].strip()
+        date = request.form['date'].strip()
+        notes = request.form.get('notes', '').strip()
+        total_cost = request.form.get('total_cost', '0').strip()
+        status = request.form.get('status', 'planned').strip()
+
+        member_names = request.form.getlist('member_name[]')
+        member_harvests = request.form.getlist('member_harvest[]')
+        member_costs = request.form.getlist('member_cost[]')
+
+        if not spot or not date:
+            flash('请填写钓点和日期！', 'error')
+        else:
+            cost = float(total_cost) if total_cost else 0
+            conn.execute('''
+                UPDATE fishing_invitations
+                SET spot = ?, date = ?, notes = ?, status = ?, total_cost = ?
+                WHERE id = ?
+            ''', (spot, date, notes or None, status, cost, inv_id))
+
+            conn.execute('DELETE FROM invitation_members WHERE invitation_id = ?', (inv_id,))
+
+            for i, name in enumerate(member_names):
+                name = name.strip()
+                if name:
+                    harvest = member_harvests[i].strip() if i < len(member_harvests) else ''
+                    share = float(member_costs[i].strip() or 0) if i < len(member_costs) else 0
+                    conn.execute('''
+                        INSERT INTO invitation_members (invitation_id, name, harvest_detail, cost_share)
+                        VALUES (?, ?, ?, ?)
+                    ''', (inv_id, name, harvest or None, share))
+
+            conn.commit()
+            conn.close()
+            flash('邀约更新成功！', 'success')
+            return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+    conn.close()
+    return render_template('invitation_form.html', invitation=inv, members=members, spot_list=spot_list)
+
+
+@app.route('/invitations/<int:inv_id>/delete', methods=['POST'])
+def delete_invitation(inv_id):
+    conn = get_db()
+    conn.execute('DELETE FROM invitation_members WHERE invitation_id = ?', (inv_id,))
+    conn.execute('DELETE FROM fishing_invitations WHERE id = ?', (inv_id,))
+    conn.commit()
+    conn.close()
+    flash('邀约已删除！', 'success')
+    return redirect(url_for('invitations_list'))
+
+
+@app.route('/invitations/<int:inv_id>/members/add', methods=['POST'])
+def add_invitation_member(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT id FROM fishing_invitations WHERE id = ?', (inv_id,)).fetchone()
+    if inv is None:
+        conn.close()
+        flash('邀约不存在！', 'error')
+        return redirect(url_for('invitations_list'))
+
+    name = request.form.get('name', '').strip()
+    harvest_detail = request.form.get('harvest_detail', '').strip()
+    cost_share = request.form.get('cost_share', '0').strip()
+
+    if not name:
+        flash('请填写钓友姓名！', 'error')
+    else:
+        share = float(cost_share) if cost_share else 0
+        conn.execute('''
+            INSERT INTO invitation_members (invitation_id, name, harvest_detail, cost_share)
+            VALUES (?, ?, ?, ?)
+        ''', (inv_id, name, harvest_detail or None, share))
+        conn.commit()
+        flash('钓友添加成功！', 'success')
+
+    conn.close()
+    return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+
+@app.route('/invitations/<int:inv_id>/members/<int:member_id>/edit', methods=['POST'])
+def edit_invitation_member(inv_id, member_id):
+    conn = get_db()
+    name = request.form.get('name', '').strip()
+    harvest_detail = request.form.get('harvest_detail', '').strip()
+    cost_share = request.form.get('cost_share', '0').strip()
+
+    if not name:
+        flash('请填写钓友姓名！', 'error')
+    else:
+        share = float(cost_share) if cost_share else 0
+        conn.execute('''
+            UPDATE invitation_members
+            SET name = ?, harvest_detail = ?, cost_share = ?
+            WHERE id = ? AND invitation_id = ?
+        ''', (name, harvest_detail or None, share, member_id, inv_id))
+        conn.commit()
+        flash('钓友信息更新成功！', 'success')
+
+    conn.close()
+    return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+
+@app.route('/invitations/<int:inv_id>/members/<int:member_id>/delete', methods=['POST'])
+def delete_invitation_member(inv_id, member_id):
+    conn = get_db()
+    conn.execute('DELETE FROM invitation_members WHERE id = ? AND invitation_id = ?', (member_id, inv_id))
+    conn.commit()
+    conn.close()
+    flash('钓友已移除！', 'success')
+    return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+
+@app.route('/invitations/<int:inv_id>/status', methods=['POST'])
+def update_invitation_status(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT id FROM fishing_invitations WHERE id = ?', (inv_id,)).fetchone()
+    if inv is None:
+        conn.close()
+        flash('邀约不存在！', 'error')
+        return redirect(url_for('invitations_list'))
+
+    status = request.form.get('status', '').strip()
+    valid_statuses = ['planned', 'ongoing', 'completed']
+    if status not in valid_statuses:
+        flash('无效的状态！', 'error')
+    else:
+        conn.execute('UPDATE fishing_invitations SET status = ? WHERE id = ?', (status, inv_id))
+        conn.commit()
+        flash('状态更新成功！', 'success')
+
+    conn.close()
+    return redirect(request.referrer or url_for('invitations_detail', inv_id=inv_id))
+
+
+@app.route('/invitations/<int:inv_id>/split-cost', methods=['POST'])
+def split_invitation_cost(inv_id):
+    conn = get_db()
+    inv = conn.execute('SELECT * FROM fishing_invitations WHERE id = ?', (inv_id,)).fetchone()
+    if inv is None:
+        conn.close()
+        flash('邀约不存在！', 'error')
+        return redirect(url_for('invitations_list'))
+
+    members = conn.execute(
+        'SELECT id FROM invitation_members WHERE invitation_id = ?',
+        (inv_id,)
+    ).fetchall()
+
+    total_cost = inv['total_cost'] or 0
+    member_count = len(members)
+
+    if member_count == 0:
+        conn.close()
+        flash('暂无可分摊费用的钓友！', 'error')
+        return redirect(url_for('invitations_detail', inv_id=inv_id))
+
+    avg_share = round(total_cost / member_count, 2)
+    remainder = round(total_cost - avg_share * member_count, 2)
+
+    for i, member in enumerate(members):
+        share = avg_share
+        if i == 0 and remainder > 0:
+            share = round(share + remainder, 2)
+        conn.execute(
+            'UPDATE invitation_members SET cost_share = ? WHERE id = ?',
+            (share, member['id'])
+        )
+
+    conn.commit()
+    conn.close()
+    flash('费用已平均分摊！', 'success')
+    return redirect(url_for('invitations_detail', inv_id=inv_id))
 
 
 @app.route('/monthly-report')
