@@ -3416,6 +3416,46 @@ footer {
     transform: translateX(4px);
 }
 
+.heat-marker-inactive {
+    background: #a0aec0 !important;
+    opacity: 0.5;
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.15),
+                inset 0 0 0 2px rgba(255, 255, 255, 0.5) !important;
+}
+
+.heat-marker-inactive span {
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    opacity: 0.8;
+}
+
+.heat-marker-inactive:hover {
+    opacity: 0.8 !important;
+    transform: translate(-50%, -50%) scale(1.1) !important;
+}
+
+.popup-season-filter {
+    font-size: 12px;
+    color: #667eea;
+    background: #ebf4ff;
+    padding: 4px 10px;
+    border-radius: 12px;
+    margin: 0 0 10px;
+    font-weight: 500;
+    display: inline-block;
+}
+
+.popup-inactive-hint {
+    font-size: 13px;
+    color: #dd6b20;
+    background: #fffaf0;
+    padding: 10px 12px;
+    border-radius: 6px;
+    border: 1px solid #feebc8;
+    margin: 8px 0 12px;
+    font-weight: 500;
+}
+
 @media (max-width: 768px) {
     .heatmap-stats-grid {
         grid-template-columns: repeat(2, 1fr);
