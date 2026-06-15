@@ -43,7 +43,7 @@
             <button type="submit" class="btn btn-primary">🔍 检索</button>
             <a href="{{ url_for('search_logs') }}" class="btn btn-secondary">重置</a>
             {% if has_filter and logs %}
-                <a href="{{ url_for('export_search_csv', date_start=date_start, date_end=date_end, spot=selected_spot, fish_species=selected_species) }}"
+                <a href="{{ url_for('export_search_csv', date_start=date_start, date_end=date_end, spot=selected_spot, fish_species=selected_species, season=selected_season) }}"
                    class="btn btn-success">📥 导出 CSV</a>
             {% endif %}
         </div>
@@ -60,6 +60,9 @@
             {% endif %}
             {% if selected_species %}
                 <span class="search-filter-tag">🐟 {{ selected_species }}</span>
+            {% endif %}
+            {% if selected_season and season_labels.get(selected_season) %}
+                <span class="search-filter-tag">🍂 {{ season_labels.get(selected_season) }}</span>
             {% endif %}
         </div>
 

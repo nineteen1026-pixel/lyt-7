@@ -1634,6 +1634,7 @@ def search_logs():
     date_end = request.args.get('date_end', '').strip()
     selected_spot = request.args.get('spot', '').strip()
     selected_species = request.args.get('fish_species', '').strip()
+    selected_season = request.args.get('season', '').strip()
 
     conditions = []
     params = []
@@ -1650,6 +1651,11 @@ def search_logs():
     if selected_species:
         conditions.append('fish_species = ?')
         params.append(selected_species)
+    if selected_season and selected_season in SEASON_MONTHS:
+        months = SEASON_MONTHS[selected_season]
+        placeholders = ','.join(['?'] * len(months))
+        conditions.append(f'CAST(strftime(\'%m\', created_at) AS INTEGER) IN ({placeholders})')
+        params.extend(months)
 
     logs = []
     if conditions:
@@ -1661,7 +1667,7 @@ def search_logs():
 
     conn.close()
 
-    has_filter = bool(date_start or date_end or selected_spot or selected_species)
+    has_filter = bool(date_start or date_end or selected_spot or selected_species or selected_season)
 
     return render_template(
         'search.html',
@@ -1671,6 +1677,8 @@ def search_logs():
         date_end=date_end,
         selected_spot=selected_spot,
         selected_species=selected_species,
+        selected_season=selected_season,
+        season_labels=SEASON_LABELS,
         logs=logs,
         has_filter=has_filter
     )
@@ -1684,6 +1692,7 @@ def export_search_csv():
     date_end = request.args.get('date_end', '').strip()
     selected_spot = request.args.get('spot', '').strip()
     selected_species = request.args.get('fish_species', '').strip()
+    selected_season = request.args.get('season', '').strip()
 
     conditions = []
     params = []
@@ -1700,6 +1709,11 @@ def export_search_csv():
     if selected_species:
         conditions.append('fish_species = ?')
         params.append(selected_species)
+    if selected_season and selected_season in SEASON_MONTHS:
+        months = SEASON_MONTHS[selected_season]
+        placeholders = ','.join(['?'] * len(months))
+        conditions.append(f'CAST(strftime(\'%m\', created_at) AS INTEGER) IN ({placeholders})')
+        params.extend(months)
 
     if not conditions:
         conn.close()

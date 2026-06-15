@@ -123,29 +123,19 @@
         return '#e53e3e';
     }
 
-    function getSeasonDateRange(season, year) {
-        var y = year || new Date().getFullYear();
-        switch(season) {
-            case 'spring': return { start: y + '-03-01', end: y + '-05-31', label: '春季' };
-            case 'summer': return { start: y + '-06-01', end: y + '-08-31', label: '夏季' };
-            case 'autumn': return { start: y + '-09-01', end: y + '-11-30', label: '秋季' };
-            case 'winter': return { start: y + '-12-01', end: y + '-12-31', label: '冬季' };
-            default: return { start: y + '-01-01', end: y + '-12-31', label: '全年' };
-        }
-    }
-
     function loadHeatmapData() {
         fetch(buildHeatmapUrl())
             .then(r => r.json())
             .then(data => {
                 currentSpotsData = data.spots || [];
+                var activeCount = currentSpotsData.filter(function(s) { return s.log_count > 0; }).length;
 
-                document.getElementById('stat-spots').textContent = data.total_spots || 0;
+                document.getElementById('stat-spots').textContent = activeCount;
                 document.getElementById('stat-logs').textContent = data.total_logs || 0;
                 document.getElementById('stat-max').textContent = data.max_count || 0;
                 document.getElementById('heatmap-summary').textContent =
                     (data.year ? data.year + '年 ' : '') + data.season_label +
-                    ' · 共 ' + (data.total_spots || 0) + ' 个钓点，' +
+                    ' · 活跃钓点 ' + activeCount + ' 个（共 ' + (data.total_spots || 0) + ' 个有坐标），' +
                     (data.total_logs || 0) + ' 条记录';
 
                 if (heatLayer) {
@@ -159,13 +149,19 @@
                     return;
                 }
 
+                if (activeCount === 0) {
+                    document.getElementById('spot-ranking-list').innerHTML =
+                        '<div class="empty-state"><p>当前季节/年份筛选下暂无出钓记录。</p></div>';
+                    heatmap.setView([35.86, 104.19], 4);
+                    return;
+                }
+
                 var heatPoints = [];
                 var bounds = [];
                 var seasonParam = '{{ selected_season }}';
                 var yearParam = '{{ selected_year }}';
 
                 var activeSpots = currentSpotsData.filter(function(s) { return s.log_count > 0; });
-                var inactiveSpots = currentSpotsData.filter(function(s) { return s.log_count === 0; });
 
                 activeSpots.forEach(function(spot) {
                     if (spot.lat && spot.lng) {
@@ -173,9 +169,13 @@
                         heatPoints.push([spot.lat, spot.lng, intensity]);
                         bounds.push([spot.lat, spot.lng]);
 
-                        var dateRange = getSeasonDateRange(seasonParam, yearParam);
                         var searchUrl = '/search?spot=' + encodeURIComponent(spot.name);
-                        searchUrl += '&date_start=' + dateRange.start + '&date_end=' + dateRange.end;
+                        if (seasonParam && seasonParam !== 'all') {
+                            searchUrl += '&season=' + seasonParam;
+                        }
+                        if (yearParam) {
+                            searchUrl += '&date_start=' + yearParam + '-01-01&date_end=' + yearParam + '-12-31';
+                        }
 
                         var color = getHeatColor(spot.intensity);
                         var sizeClass = spot.intensity > 0.6 ? 'size-large' : (spot.intensity > 0.3 ? 'size-medium' : 'size-small');
@@ -221,44 +221,6 @@
                         marker.on('click', function() {
                             window.location.href = searchUrl;
                         });
-
-                        marker.addTo(markerLayer);
-                    }
-                });
-
-                inactiveSpots.forEach(function(spot) {
-                    if (spot.lat && spot.lng) {
-                        bounds.push([spot.lat, spot.lng]);
-
-                        var searchUrl = '/search?spot=' + encodeURIComponent(spot.name);
-
-                        var iconHtml = '<div class="heat-marker size-small heat-marker-inactive" title="该季节暂无记录">' +
-                            '<span>—</span>' +
-                            '</div>';
-
-                        var icon = L.divIcon({
-                            className: 'heat-marker-wrapper',
-                            html: iconHtml,
-                            iconSize: [22, 22],
-                            iconAnchor: [11, 11]
-                        });
-
-                        var popupContent = '<div class="heat-popup">' +
-                            '<h4>' + (spot.is_favorite ? '⭐ ' : '') + spot.name + '</h4>';
-
-                        if (spot.address) {
-                            popupContent += '<p class="popup-address">🏠 ' + spot.address + '</p>';
-                        }
-
-                        popupContent += '<p class="popup-inactive-hint">⚠️ 当前筛选条件下暂无出钓记录</p>';
-
-                        popupContent += '<div class="popup-footer">' +
-                            '<a href="/spots/' + spot.id + '" class="popup-detail-link">查看钓点详情 →</a> | ' +
-                            '<a href="' + searchUrl + '" class="popup-detail-link">全部记录</a>' +
-                            '</div></div>';
-
-                        var marker = L.marker([spot.lat, spot.lng], { icon: icon })
-                            .bindPopup(popupContent, { maxWidth: 320 });
 
                         marker.addTo(markerLayer);
                     }
@@ -322,9 +284,15 @@
             else if (idx === 2) { rankClass = 'rank-bronze'; rankEmoji = '🥉'; }
 
             var barWidth = spot.log_count > 0 ? (spot.log_count / sorted[0].log_count * 100) : 0;
-            var dateRange = getSeasonDateRange('{{ selected_season }}', '{{ selected_year }}');
+            var seasonParam = '{{ selected_season }}';
+            var yearParam = '{{ selected_year }}';
             var searchUrl = '/search?spot=' + encodeURIComponent(spot.name);
-            searchUrl += '&date_start=' + dateRange.start + '&date_end=' + dateRange.end;
+            if (seasonParam && seasonParam !== 'all') {
+                searchUrl += '&season=' + seasonParam;
+            }
+            if (yearParam) {
+                searchUrl += '&date_start=' + yearParam + '-01-01&date_end=' + yearParam + '-12-31';
+            }
 
             html += '<a href="' + searchUrl + '" class="ranking-item heat-ranking-item" data-spot="' + spot.name + '">' +
                 '<div class="ranking-rank ' + rankClass + '">' + rankEmoji + '</div>' +
