@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+
+{% block title %}钓点热力图 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🗺️ 钓点热力图</h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <span id="heatmap-summary" class="total-info">加载中...</span>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">季节：</span>
+            <a href="{{ url_for('heatmap', season='all', year=selected_year) }}" class="filter-btn {% if selected_season == 'all' %}active{% endif %}">全年</a>
+            <a href="{{ url_for('heatmap', season='spring', year=selected_year) }}" class="filter-btn {% if selected_season == 'spring' %}active{% endif %}">🌸 春季</a>
+            <a href="{{ url_for('heatmap', season='summer', year=selected_year) }}" class="filter-btn {% if selected_season == 'summer' %}active{% endif %}">☀️ 夏季</a>
+            <a href="{{ url_for('heatmap', season='autumn', year=selected_year) }}" class="filter-btn {% if selected_season == 'autumn' %}active{% endif %}">🍂 秋季</a>
+            <a href="{{ url_for('heatmap', season='winter', year=selected_year) }}" class="filter-btn {% if selected_season == 'winter' %}active{% endif %}">❄️ 冬季</a>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">年份：</span>
+            {% if year_list %}
+                {% for year in year_list %}
+                    <a href="{{ url_for('heatmap', season=selected_season, year=year) }}" class="filter-btn {% if selected_year == year %}active{% endif %}">{{ year }}</a>
+                {% endfor %}
+            {% else %}
+                <span class="filter-label" style="color: #a0aec0;">暂无数据</span>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="heatmap-stats-grid">
+        <div class="heatmap-stat-card">
+            <div class="stat-icon">📍</div>
+            <div class="stat-info">
+                <div class="stat-value" id="stat-spots">0</div>
+                <div class="stat-label">有坐标钓点数</div>
+            </div>
+        </div>
+        <div class="heatmap-stat-card">
+            <div class="stat-icon">🎣</div>
+            <div class="stat-info">
+                <div class="stat-value" id="stat-logs">0</div>
+                <div class="stat-label">垂钓记录数</div>
+            </div>
+        </div>
+        <div class="heatmap-stat-card">
+            <div class="stat-icon">🔥</div>
+            <div class="stat-info">
+                <div class="stat-value" id="stat-max">0</div>
+                <div class="stat-label">最高频次</div>
+            </div>
+        </div>
+        <div class="heatmap-stat-card">
+            <div class="stat-icon">📅</div>
+            <div class="stat-info">
+                <div class="stat-value" id="stat-season">{{ season_labels.get(selected_season, '全年') }}</div>
+                <div class="stat-label">当前季节</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="heatmap-legend">
+        <span class="legend-label">密度：</span>
+        <div class="legend-gradient"></div>
+        <span class="legend-min">低</span>
+        <span class="legend-max">高</span>
+        <span class="legend-hint">（点击热力点可查看该钓点的历史记录）</span>
+    </div>
+
+    <div id="heatmap-container" class="heatmap-map-container">
+        <div id="heatmap-map" class="heatmap-map"></div>
+    </div>
+
+    <div id="spot-ranking-section" class="report-section" style="margin-top: 30px;">
+        <h3>🏆 钓点活跃度排名</h3>
+        <div id="spot-ranking-list" class="spot-ranking">
+            <div class="empty-hint">加载中...</div>
+        </div>
+    </div>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <script>
+    var heatmap = null;
+    var heatLayer = null;
+    var markerLayer = null;
+    var currentSpotsData = [];
+
+    function buildHeatmapUrl() {
+        var params = new URLSearchParams();
+        params.set('season', '{{ selected_season }}');
+        if ('{{ selected_year }}') {
+            params.set('year', '{{ selected_year }}');
+        }
+        return '/api/heatmap/data?' + params.toString();
+    }
+
+    function initHeatmap() {
+        heatmap = L.map('heatmap-map').setView([35.86, 104.19], 4);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19
+        }).addTo(heatmap);
+
+        markerLayer = L.layerGroup().addTo(heatmap);
+
+        loadHeatmapData();
+
+        setTimeout(function() {
+            if (heatmap) heatmap.invalidateSize();
+        }, 100);
+    }
+
+    function getHeatColor(intensity) {
+        if (intensity < 0.2) return '#3182ce';
+        if (intensity < 0.4) return '#38a169';
+        if (intensity < 0.6) return '#d69e2e';
+        if (intensity < 0.8) return '#dd6b20';
+        return '#e53e3e';
+    }
+
+    function loadHeatmapData() {
+        fetch(buildHeatmapUrl())
+            .then(r => r.json())
+            .then(data => {
+                currentSpotsData = data.spots || [];
+
+                document.getElementById('stat-spots').textContent = data.total_spots || 0;
+                document.getElementById('stat-logs').textContent = data.total_logs || 0;
+                document.getElementById('stat-max').textContent = data.max_count || 0;
+                document.getElementById('heatmap-summary').textContent =
+                    (data.year ? data.year + '年 ' : '') + data.season_label +
+                    ' · 共 ' + (data.total_spots || 0) + ' 个钓点，' +
+                    (data.total_logs || 0) + ' 条记录';
+
+                if (heatLayer) {
+                    heatmap.removeLayer(heatLayer);
+                }
+                markerLayer.clearLayers();
+
+                if (currentSpotsData.length === 0) {
+                    document.getElementById('spot-ranking-list').innerHTML =
+                        '<div class="empty-state"><p>暂无带坐标的钓点数据，请先在钓点管理中添加坐标信息。</p></div>';
+                    return;
+                }
+
+                var heatPoints = [];
+                var bounds = [];
+
+                currentSpotsData.forEach(function(spot) {
+                    if (spot.lat && spot.lng) {
+                        var intensity = spot.log_count > 0 ? Math.max(0.3, spot.intensity) : 0.1;
+                        heatPoints.push([spot.lat, spot.lng, intensity]);
+                        bounds.push([spot.lat, spot.lng]);
+
+                        var seasonParam = '{{ selected_season }}';
+                        var yearParam = '{{ selected_year }}';
+                        var searchUrl = '/search?spot=' + encodeURIComponent(spot.name);
+                        if (yearParam) {
+                            searchUrl += '&date_start=' + yearParam + '-01-01&date_end=' + yearParam + '-12-31';
+                        }
+
+                        var color = getHeatColor(spot.intensity);
+                        var sizeClass = spot.intensity > 0.6 ? 'size-large' : (spot.intensity > 0.3 ? 'size-medium' : 'size-small');
+
+                        var iconHtml = '<div class="heat-marker ' + sizeClass + '" style="background:' + color + ';">' +
+                            (spot.log_count > 0 ? '<span>' + spot.log_count + '</span>' : '') +
+                            '</div>';
+
+                        var icon = L.divIcon({
+                            className: 'heat-marker-wrapper',
+                            html: iconHtml,
+                            iconSize: spot.intensity > 0.6 ? [40, 40] : (spot.intensity > 0.3 ? [32, 32] : [26, 26]),
+                            iconAnchor: spot.intensity > 0.6 ? [20, 20] : (spot.intensity > 0.3 ? [16, 16] : [13, 13])
+                        });
+
+                        var popupContent = '<div class="heat-popup">' +
+                            '<h4>' + (spot.is_favorite ? '⭐ ' : '') + spot.name + '</h4>';
+
+                        if (spot.address) {
+                            popupContent += '<p class="popup-address">🏠 ' + spot.address + '</p>';
+                        }
+
+                        popupContent += '<div class="popup-stats">' +
+                            '<div class="popup-stat"><span class="popup-stat-label">记录数</span><span class="popup-stat-value">' + spot.log_count + '</span></div>' +
+                            '<div class="popup-stat"><span class="popup-stat-label">总收获</span><span class="popup-stat-value harvest-value">' + spot.total_harvest + '</span></div>' +
+                            '<div class="popup-stat"><span class="popup-stat-label">平均收获</span><span class="popup-stat-value">' + spot.avg_harvest + '</span></div>' +
+                            '</div>';
+
+                        if (spot.log_ids && spot.log_ids.length > 0) {
+                            popupContent += '<div class="popup-actions">' +
+                                '<a href="' + searchUrl + '" class="btn btn-small btn-primary popup-link">' +
+                                '🔍 查看历史记录 (' + spot.log_ids.length + ')' +
+                                '</a></div>';
+                        }
+
+                        popupContent += '<div class="popup-footer">' +
+                            '<a href="/spots/' + spot.id + '" class="popup-detail-link">查看钓点详情 →</a>' +
+                            '</div></div>';
+
+                        var marker = L.marker([spot.lat, spot.lng], { icon: icon })
+                            .bindPopup(popupContent, { maxWidth: 320 });
+
+                        marker.on('click', function() {
+                            if (spot.log_ids && spot.log_ids.length > 0) {
+                                window.location.href = searchUrl;
+                            }
+                        });
+
+                        marker.addTo(markerLayer);
+                    }
+                });
+
+                if (heatPoints.length > 0) {
+                    heatLayer = L.heatLayer(heatPoints, {
+                        radius: 45,
+                        blur: 30,
+                        maxZoom: 12,
+                        gradient: {
+                            0.2: '#3182ce',
+                            0.4: '#38a169',
+                            0.6: '#d69e2e',
+                            0.8: '#dd6b20',
+                            1.0: '#e53e3e'
+                        }
+                    }).addTo(heatmap);
+                }
+
+                if (bounds.length > 0) {
+                    if (bounds.length === 1) {
+                        heatmap.setView(bounds[0], 12);
+                    } else {
+                        heatmap.fitBounds(L.latLngBounds(bounds).pad(0.15));
+                    }
+                }
+
+                renderSpotRanking(currentSpotsData);
+            })
+            .catch(err => {
+                console.error('Failed to load heatmap data:', err);
+                document.getElementById('heatmap-summary').textContent = '加载失败，请刷新重试';
+                document.getElementById('spot-ranking-list').innerHTML =
+                    '<div class="empty-hint">数据加载失败</div>';
+            });
+    }
+
+    function renderSpotRanking(spots) {
+        var sorted = [...spots].sort(function(a, b) {
+            return b.log_count - a.log_count;
+        }).slice(0, 10);
+
+        if (sorted.length === 0) {
+            document.getElementById('spot-ranking-list').innerHTML =
+                '<div class="empty-state"><p>暂无数据</p></div>';
+            return;
+        }
+
+        var maxHarvest = sorted.reduce(function(m, s) {
+            return Math.max(m, s.total_harvest);
+        }, 0);
+
+        var html = '';
+        sorted.forEach(function(spot, idx) {
+            var rankClass = '';
+            var rankEmoji = (idx + 1).toString();
+            if (idx === 0) { rankClass = 'rank-gold'; rankEmoji = '🥇'; }
+            else if (idx === 1) { rankClass = 'rank-silver'; rankEmoji = '🥈'; }
+            else if (idx === 2) { rankClass = 'rank-bronze'; rankEmoji = '🥉'; }
+
+            var barWidth = spot.log_count > 0 ? (spot.log_count / sorted[0].log_count * 100) : 0;
+            var searchUrl = '/search?spot=' + encodeURIComponent(spot.name);
+            {% if selected_year %}
+                searchUrl += '&date_start={{ selected_year }}-01-01&date_end={{ selected_year }}-12-31';
+            {% endif %}
+
+            html += '<a href="' + searchUrl + '" class="ranking-item heat-ranking-item" data-spot="' + spot.name + '">' +
+                '<div class="ranking-rank ' + rankClass + '">' + rankEmoji + '</div>' +
+                '<div class="ranking-info">' +
+                '<div class="ranking-spot">' +
+                (spot.is_favorite ? '⭐ ' : '') + spot.name +
+                '</div>' +
+                '<div class="ranking-bar-track">' +
+                '<div class="ranking-bar-fill" style="width:' + barWidth + '%;"></div>' +
+                '</div>' +
+                '</div>' +
+                '<div class="ranking-stats">' +
+                '<div class="ranking-harvest">' + (spot.total_harvest > 0 ? spot.total_harvest + ' 斤' : '—') + '</div>' +
+                '<div class="ranking-logs">' + spot.log_count + ' 次出钓</div>' +
+                '</div>' +
+                '</a>';
+        });
+
+        document.getElementById('spot-ranking-list').innerHTML = html;
+
+        document.querySelectorAll('.heat-ranking-item').forEach(function(el) {
+            el.addEventListener('mouseenter', function() {
+                var spotName = el.dataset.spot;
+                highlightSpotOnMap(spotName);
+            });
+            el.addEventListener('mouseleave', function() {
+                resetMapHighlight();
+            });
+        });
+    }
+
+    function highlightSpotOnMap(spotName) {
+        markerLayer.eachLayer(function(layer) {
+            if (layer.getPopup && layer.getPopup()) {
+                var content = layer.getPopup().getContent();
+                if (content && content.indexOf(spotName) !== -1) {
+                    layer.openPopup();
+                }
+            }
+        });
+    }
+
+    function resetMapHighlight() {
+        heatmap.closePopup();
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        initHeatmap();
+    });
+    </script>
+{% endblock %}

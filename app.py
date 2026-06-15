@@ -1747,6 +1747,152 @@ def export_search_csv():
     )
 
 
+def get_season(month):
+    if month in (3, 4, 5):
+        return 'spring'
+    elif month in (6, 7, 8):
+        return 'summer'
+    elif month in (9, 10, 11):
+        return 'autumn'
+    else:
+        return 'winter'
+
+
+SEASON_LABELS = {
+    'spring': '春季 (3-5月)',
+    'summer': '夏季 (6-8月)',
+    'autumn': '秋季 (9-11月)',
+    'winter': '冬季 (12-2月)',
+    'all': '全年'
+}
+
+
+SEASON_MONTHS = {
+    'spring': (3, 4, 5),
+    'summer': (6, 7, 8),
+    'autumn': (9, 10, 11),
+    'winter': (12, 1, 2),
+}
+
+
+@app.route('/heatmap')
+def heatmap():
+    selected_season = request.args.get('season', 'all')
+    conn = get_db()
+
+    years = conn.execute('''
+        SELECT DISTINCT strftime('%Y', created_at) as year
+        FROM fishing_logs
+        WHERE created_at IS NOT NULL AND created_at != ''
+        ORDER BY year DESC
+    ''').fetchall()
+    year_list = [row['year'] for row in years]
+    selected_year = request.args.get('year', year_list[0] if year_list else None)
+
+    conn.close()
+
+    return render_template(
+        'heatmap.html',
+        selected_season=selected_season,
+        season_labels=SEASON_LABELS,
+        year_list=year_list,
+        selected_year=selected_year
+    )
+
+
+@app.route('/api/heatmap/data')
+def heatmap_data():
+    selected_season = request.args.get('season', 'all')
+    selected_year = request.args.get('year', None)
+
+    conn = get_db()
+
+    log_query = '''
+        SELECT l.spot, l.created_at, l.id as log_id, l.harvest, l.fish_species
+        FROM fishing_logs l
+        WHERE l.created_at IS NOT NULL AND l.created_at != ''
+    '''
+    params = []
+
+    if selected_year:
+        log_query += ' AND strftime(\'%Y\', l.created_at) = ?'
+        params.append(selected_year)
+
+    if selected_season != 'all' and selected_season in SEASON_MONTHS:
+        months = SEASON_MONTHS[selected_season]
+        placeholders = ','.join(['?'] * len(months))
+        log_query += f' AND CAST(strftime(\'%m\', l.created_at) AS INTEGER) IN ({placeholders})'
+        params.extend(months)
+
+    log_rows = conn.execute(log_query, params).fetchall()
+
+    spot_log_count = {}
+    spot_log_ids = {}
+    spot_harvests = {}
+
+    for row in log_rows:
+        spot_name = row['spot']
+        if spot_name not in spot_log_count:
+            spot_log_count[spot_name] = 0
+            spot_log_ids[spot_name] = []
+            spot_harvests[spot_name] = []
+        spot_log_count[spot_name] += 1
+        spot_log_ids[spot_name].append(row['log_id'])
+        harvest_val = parse_harvest_value(row['harvest'])
+        if harvest_val > 0:
+            spot_harvests[spot_name].append(harvest_val)
+
+    spots_query = '''
+        SELECT id, name, latitude, longitude, address, is_favorite
+        FROM fishing_spots
+        WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+    '''
+    spot_rows = conn.execute(spots_query).fetchall()
+
+    result = []
+    max_count = 0
+
+    for s in spot_rows:
+        spot_name = s['name']
+        count = spot_log_count.get(spot_name, 0)
+        if count > max_count:
+            max_count = count
+
+        harvests = spot_harvests.get(spot_name, [])
+        total_harvest = sum(harvests)
+        avg_harvest = round(total_harvest / len(harvests), 2) if harvests else 0
+
+        result.append({
+            'id': s['id'],
+            'name': spot_name,
+            'lat': s['latitude'],
+            'lng': s['longitude'],
+            'address': s['address'] or '',
+            'is_favorite': bool(s['is_favorite']),
+            'log_count': count,
+            'log_ids': spot_log_ids.get(spot_name, []),
+            'total_harvest': total_harvest,
+            'avg_harvest': avg_harvest,
+            'intensity': 0
+        })
+
+    conn.close()
+
+    for spot in result:
+        if max_count > 0:
+            spot['intensity'] = round(spot['log_count'] / max_count, 4)
+
+    return jsonify({
+        'season': selected_season,
+        'season_label': SEASON_LABELS.get(selected_season, '全年'),
+        'year': selected_year,
+        'max_count': max_count,
+        'total_spots': len(result),
+        'total_logs': sum(s['log_count'] for s in result),
+        'spots': result
+    })
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='127.0.0.1', port=5000)
