@@ -3,6 +3,47 @@
 {% block title %}首页 - 钓点日志{% endblock %}
 
 {% block content %}
+    {% if upcoming_strategies %}
+        <div class="strategy-reminder-section">
+            <div class="page-header">
+                <h2>🔔 待执行策略提醒（三日内）</h2>
+            </div>
+            <div class="strategy-reminder-list">
+                {% for strategy in upcoming_strategies %}
+                    <div class="strategy-card {% if strategy.is_today %}strategy-today{% elif strategy.is_tomorrow %}strategy-tomorrow{% endif %}">
+                        <div class="strategy-card-header">
+                            <div class="strategy-date-badge">
+                                {% if strategy.is_today %}
+                                    <span class="badge badge-today">今天</span>
+                                {% elif strategy.is_tomorrow %}
+                                    <span class="badge badge-tomorrow">明天</span>
+                                {% else %}
+                                    <span class="badge badge-upcoming">{{ strategy.days_until }}天后</span>
+                                {% endif %}
+                                <span class="strategy-date">{{ strategy.next_strategy_date }}</span>
+                            </div>
+                            <div class="strategy-spot">📍 {{ strategy.spot }}</div>
+                        </div>
+                        <div class="strategy-card-body">
+                            <div class="strategy-content">
+                                <span class="label">执行策略：</span>
+                                <span>{{ strategy.next_strategy }}</span>
+                            </div>
+                            <div class="strategy-original-record">
+                                <span class="label">关联记录：</span>
+                                <span>{{ strategy.created_at }} · 收获：{{ strategy.harvest }}</span>
+                            </div>
+                        </div>
+                        <div class="strategy-card-footer">
+                            <a href="{{ url_for('log_detail', log_id=strategy.id) }}" class="btn btn-small btn-strategy">查看关联记录</a>
+                            <a href="{{ url_for('edit_log', log_id=strategy.id) }}" class="btn btn-small btn-secondary">调整策略</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
     <div class="page-header">
         <h2>最近记录</h2>
         <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>

@@ -66,6 +66,9 @@
             <div class="detail-section">
                 <h3>💡 下次策略</h3>
                 <p class="detail-text">{{ log['next_strategy'] }}</p>
+                {% if log['next_strategy_date'] %}
+                <p class="detail-meta">📅 计划执行日期：{{ log['next_strategy_date'] }}</p>
+                {% endif %}
             </div>
         {% endif %}
     </div>

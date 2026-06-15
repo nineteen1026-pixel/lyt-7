@@ -7,7 +7,7 @@ import urllib.request
 import urllib.parse
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response
 
 app = Flask(__name__)
@@ -54,6 +54,8 @@ def init_db():
         conn.execute('ALTER TABLE fishing_logs ADD COLUMN humidity TEXT')
     if not column_exists(conn, 'fishing_logs', 'wind'):
         conn.execute('ALTER TABLE fishing_logs ADD COLUMN wind TEXT')
+    if not column_exists(conn, 'fishing_logs', 'next_strategy_date'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN next_strategy_date DATE')
     conn.execute('''
         CREATE TABLE IF NOT EXISTS fishing_spots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +147,7 @@ FIELD_LABELS = {
     'fish_species': '鱼种',
     'harvest': '收获情况',
     'next_strategy': '下次策略',
+    'next_strategy_date': '策略执行日期',
     'created_at': '日期',
     'temperature': '温度',
     'humidity': '湿度',
@@ -153,7 +156,7 @@ FIELD_LABELS = {
 
 EDITABLE_FIELDS = [
     'spot', 'weather', 'water_level', 'bait', 'fish_species',
-    'harvest', 'next_strategy', 'created_at', 'temperature',
+    'harvest', 'next_strategy', 'next_strategy_date', 'created_at', 'temperature',
     'humidity', 'wind'
 ]
 
@@ -230,6 +233,7 @@ def edit_log(log_id):
         fish_species = request.form['fish_species'].strip()
         harvest = request.form['harvest'].strip()
         next_strategy = request.form['next_strategy'].strip()
+        next_strategy_date = request.form.get('next_strategy_date', '').strip()
         created_at = request.form['created_at'] or datetime.now().strftime('%Y-%m-%d')
         temperature = request.form.get('temperature', '').strip()
         humidity = request.form.get('humidity', '').strip()
@@ -247,6 +251,7 @@ def edit_log(log_id):
                 'fish_species': fish_species,
                 'harvest': harvest,
                 'next_strategy': next_strategy,
+                'next_strategy_date': next_strategy_date or None,
                 'created_at': created_at,
                 'temperature': temperature or None,
                 'humidity': humidity or None,
@@ -262,11 +267,11 @@ def edit_log(log_id):
             conn.execute('''
                 UPDATE fishing_logs
                 SET spot = ?, weather = ?, water_level = ?, bait = ?, fish_species = ?,
-                    harvest = ?, next_strategy = ?, created_at = ?, temperature = ?,
+                    harvest = ?, next_strategy = ?, next_strategy_date = ?, created_at = ?, temperature = ?,
                     humidity = ?, wind = ?
                 WHERE id = ?
             ''', (spot, weather, water_level, bait, fish_species, harvest,
-                  next_strategy, created_at, temperature or None, humidity or None,
+                  next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None,
                   wind or None, log_id))
             conn.commit()
             flash('记录更新成功！', 'success')
@@ -277,6 +282,40 @@ def edit_log(log_id):
     return render_template('edit.html', log=log, bait_list=bait_list,
                            page=page, sort_by=sort_by, per_page=per_page,
                            default_city=WEATHER_API_CONFIG['city'])
+
+
+def get_upcoming_strategies(conn):
+    today = datetime.now().date()
+    three_days_later = today + timedelta(days=3)
+    
+    upcoming_strategies = conn.execute('''
+        SELECT id, spot, next_strategy, next_strategy_date, created_at, harvest
+        FROM fishing_logs
+        WHERE deleted_at IS NULL
+          AND next_strategy IS NOT NULL
+          AND next_strategy != ''
+          AND next_strategy_date IS NOT NULL
+          AND next_strategy_date >= ?
+          AND next_strategy_date <= ?
+        ORDER BY next_strategy_date ASC, id ASC
+    ''', (today.strftime('%Y-%m-%d'), three_days_later.strftime('%Y-%m-%d'))).fetchall()
+    
+    result = []
+    for s in upcoming_strategies:
+        strategy_date = datetime.strptime(s['next_strategy_date'], '%Y-%m-%d').date()
+        days_until = (strategy_date - today).days
+        result.append({
+            'id': s['id'],
+            'spot': s['spot'],
+            'next_strategy': s['next_strategy'],
+            'next_strategy_date': s['next_strategy_date'],
+            'created_at': s['created_at'],
+            'harvest': s['harvest'],
+            'days_until': days_until,
+            'is_today': days_until == 0,
+            'is_tomorrow': days_until == 1,
+        })
+    return result
 
 
 @app.route('/')
@@ -296,6 +335,8 @@ def index():
     order_clause, sort_label = sort_options.get(sort_by, sort_options['date_desc'])
 
     conn = get_db()
+
+    upcoming_strategies = get_upcoming_strategies(conn)
 
     count_result = conn.execute('SELECT COUNT(*) as total FROM fishing_logs WHERE deleted_at IS NULL').fetchone()
     total = count_result['total']
@@ -317,7 +358,8 @@ def index():
         total=total,
         total_pages=total_pages,
         sort_by=sort_by,
-        sort_label=sort_label
+        sort_label=sort_label,
+        upcoming_strategies=upcoming_strategies
     )
 
 
@@ -334,6 +376,7 @@ def add_log():
         fish_species = request.form['fish_species'].strip()
         harvest = request.form['harvest'].strip()
         next_strategy = request.form['next_strategy'].strip()
+        next_strategy_date = request.form.get('next_strategy_date', '').strip()
         created_at = request.form['created_at'] or datetime.now().strftime('%Y-%m-%d')
         temperature = request.form.get('temperature', '').strip()
         humidity = request.form.get('humidity', '').strip()
@@ -343,9 +386,9 @@ def add_log():
             flash('请填写所有必填项！', 'error')
         else:
             conn.execute('''
-                INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at, temperature, humidity, wind)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at, temperature or None, humidity or None, wind or None))
+                INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date, created_at, temperature, humidity, wind)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None, wind or None))
             conn.commit()
             flash('记录添加成功！', 'success')
             conn.close()
