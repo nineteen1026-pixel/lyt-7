@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}展品详情 - 陈列室经营{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>🖼️ 展品详情</h2>
+    <div>
+        <a href="{{ url_for('gallery') }}" class="btn btn-secondary">← 返回陈列室</a>
+        <a href="{{ url_for('log_detail', log_id=exhibit.log_id) }}" class="btn btn-primary">📝 查看垂钓记录</a>
+    </div>
+</div>
+
+<div class="detail-card" style="border: 2px solid #e2e8f0; border-radius: 12px; padding: 30px; margin-bottom: 25px; background: linear-gradient(135deg, #fff 0%, #f7fafc 100%);">
+    <div class="detail-header" style="flex-wrap: wrap; gap: 15px;">
+        <div>
+            <span class="detail-date">📅 {{ exhibit.log_date }}</span>
+            <span class="detail-spot" style="margin-left: 15px;">📍 {{ exhibit.spot }}</span>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <span style="padding: 6px 14px; background: #f0fff4; color: #22543d; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid #9ae6b4;">💰 ¥{{ '%.2f'|format(exhibit.revenue) }} 收益</span>
+            <span style="padding: 6px 14px; background: #ebf8ff; color: #2a4365; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid #90cdf4;">👥 {{ exhibit.visitor_count }} 访客</span>
+            <span style="padding: 6px 14px; background: #fffaf0; color: #744210; border-radius: 20px; font-size: 13px; font-weight: 600; border: 1px solid #fbd38d;">⭐ {{ exhibit.avg_rating }} 评分</span>
+        </div>
+    </div>
+
+    <div style="text-align: center; padding: 40px 20px; margin: 25px 0; background: linear-gradient(135deg, #667eea10 0%, #764ba210 100%); border-radius: 12px;">
+        <div style="font-size: 96px; line-height: 1; margin-bottom: 15px;">🐟</div>
+        <div style="font-size: 28px; font-weight: 700; color: #2d3748; margin-bottom: 8px;">{{ exhibit.fish_species }}</div>
+        <div style="font-size: 15px; color: #718096;">{{ exhibit.exhibit_name }}</div>
+    </div>
+
+    <div class="detail-grid">
+        <div class="detail-item">
+            <span class="detail-label">🎣 饵料</span>
+            <span class="detail-value">{{ exhibit.bait }}</span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">🌤️ 天气</span>
+            <span class="detail-value">{{ exhibit.weather }}{% if exhibit.temperature %} · {{ exhibit.temperature }}{% endif %}</span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">💧 水位</span>
+            <span class="detail-value">{{ exhibit.water_level }}</span>
+        </div>
+        <div class="detail-item">
+            <span class="detail-label">🎯 收获情况</span>
+            <span class="detail-value" style="color: #38a169; font-weight: 600;">{{ exhibit.harvest }}</span>
+        </div>
+        {% if exhibit.humidity %}
+        <div class="detail-item">
+            <span class="detail-label">💧 湿度</span>
+            <span class="detail-value">{{ exhibit.humidity }}</span>
+        </div>
+        {% endif %}
+        {% if exhibit.wind %}
+        <div class="detail-item">
+            <span class="detail-label">🌬️ 风力</span>
+            <span class="detail-value">{{ exhibit.wind }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if exhibit.next_strategy %}
+    <div class="detail-section">
+        <h3>💡 后续策略</h3>
+        <p class="detail-text">{{ exhibit.next_strategy }}</p>
+    </div>
+    {% endif %}
+</div>
+
+<div class="report-section">
+    <h3>📊 评分分布</h3>
+    <div style="display: flex; gap: 30px; align-items: center; flex-wrap: wrap; padding: 20px; background: #f7fafc; border-radius: 12px; margin-bottom: 20px;">
+        <div style="text-align: center; min-width: 140px;">
+            <div style="font-size: 56px; font-weight: 700; color: #667eea; line-height: 1;">{{ exhibit.avg_rating }}</div>
+            <div style="color: #f6ad55; font-size: 20px; letter-spacing: 2px; margin-top: 6px;">
+                {% set full_stars = exhibit.avg_rating|int %}
+                {% set half_star = (exhibit.avg_rating - full_stars) >= 0.5 %}
+                {% for i in range(5) %}
+                    {% if i < full_stars %}★
+                    {% elif i == full_stars and half_star %}☆
+                    {% else %}☆{% endif %}
+                {% endfor %}
+            </div>
+            <div style="font-size: 13px; color: #718096; margin-top: 6px;">共 {{ total_ratings }} 条评价</div>
+        </div>
+        <div style="flex: 1; min-width: 250px;">
+            {% for r in range(5, 0, -1) %}
+            {% set count = rating_dist.get(r, 0) %}
+            {% set pct = (count / total_ratings * 100) if total_ratings > 0 else 0 %}
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                <span style="width: 30px; font-size: 13px; color: #718096; font-weight: 500;">{{ r }} 星</span>
+                <div style="flex: 1; height: 10px; background: #edf2f7; border-radius: 5px; overflow: hidden;">
+                    <div style="height: 100%; width: {{ pct }}%; background: linear-gradient(90deg, #f6ad55, #ed8936); border-radius: 5px; transition: width 0.5s ease;"></div>
+                </div>
+                <span style="width: 50px; text-align: right; font-size: 12px; color: #4a5568; font-weight: 500;">{{ count }} ({{ '%.0f'|format(pct) }}%)</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="report-section">
+    <h3>💬 访客评价 ({{ reviews|length }})</h3>
+    {% if reviews %}
+    <div class="ratings-list">
+        {% for review in reviews %}
+        <div class="rating-card">
+            <div class="rating-card-header">
+                <div>
+                    <strong style="color: #2d3748;">{{ review.visitor_name or '匿名访客' }}</strong>
+                    <span class="rating-card-stars" style="margin-left: 8px;">
+                        {% for i in range(5) %}
+                            {% if i < review.rating %}★{% else %}☆{% endif %}
+                        {% endfor %}
+                    </span>
+                </div>
+                <span class="rating-card-date">{{ review.created_at[:16] if review.created_at else '' }}</span>
+            </div>
+            <div class="rating-card-comment">{{ review.comment }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无访客评价</p></div>
+    {% endif %}
+</div>
+{% endblock %}

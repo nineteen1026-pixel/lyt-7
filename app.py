@@ -6,6 +6,8 @@ import sqlite3
 import urllib.request
 import urllib.parse
 import json
+import uuid
+import random
 from datetime import datetime
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response
 
@@ -89,6 +91,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS audit_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             log_id INTEGER NOT NULL,
+            batch_id TEXT NOT NULL,
             field_name TEXT NOT NULL,
             old_value TEXT,
             new_value TEXT,
@@ -96,6 +99,34 @@ def init_db():
             FOREIGN KEY (log_id) REFERENCES fishing_logs(id) ON DELETE CASCADE
         )
     ''')
+    if not column_exists(conn, 'audit_logs', 'batch_id'):
+        conn.execute('ALTER TABLE audit_logs ADD COLUMN batch_id TEXT DEFAULT \'legacy\' NOT NULL')
+        conn.execute('UPDATE audit_logs SET batch_id = \'legacy\' WHERE batch_id IS NULL OR batch_id = \'\'')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS exhibits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_id INTEGER NOT NULL,
+            exhibit_name TEXT NOT NULL,
+            revenue REAL NOT NULL DEFAULT 0,
+            visitor_count INTEGER NOT NULL DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (log_id) REFERENCES fishing_logs(id) ON DELETE CASCADE
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS visitor_reviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exhibit_id INTEGER NOT NULL,
+            rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+            comment TEXT,
+            visitor_name TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (exhibit_id) REFERENCES exhibits(id) ON DELETE CASCADE
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -121,12 +152,20 @@ EDITABLE_FIELDS = [
 ]
 
 
-def record_audit_log(conn, log_id, field_name, old_value, new_value):
-    if old_value != new_value:
+def _norm(value):
+    if value is None:
+        return ''
+    return value
+
+
+def record_audit_log(conn, log_id, batch_id, field_name, old_value, new_value):
+    old_norm = _norm(old_value)
+    new_norm = _norm(new_value)
+    if old_norm != new_norm:
         conn.execute('''
-            INSERT INTO audit_logs (log_id, field_name, old_value, new_value)
-            VALUES (?, ?, ?, ?)
-        ''', (log_id, field_name, old_value, new_value))
+            INSERT INTO audit_logs (log_id, batch_id, field_name, old_value, new_value)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (log_id, batch_id, field_name, old_norm or None, new_norm or None))
 
 
 def get_audit_logs(conn, log_id):
@@ -137,24 +176,28 @@ def get_audit_logs(conn, log_id):
     ''', (log_id,)).fetchall()
 
     logs = []
-    current_group = None
+    group_map = {}
     for row in rows:
-        ts = row['changed_at']
-        if current_group is None or current_group['timestamp'] != ts:
-            if current_group is not None:
-                logs.append(current_group)
-            current_group = {
-                'timestamp': ts,
-                'changes': []
+        batch = row['batch_id']
+        if batch not in group_map:
+            group_map[batch] = {
+                'timestamp': row['changed_at'],
+                'changes': [],
+                '_id': row['id']
             }
-        current_group['changes'].append({
+            logs.append(group_map[batch])
+        else:
+            if row['id'] > group_map[batch]['_id']:
+                group_map[batch]['_id'] = row['id']
+        group_map[batch]['changes'].append({
             'field': row['field_name'],
             'field_label': FIELD_LABELS.get(row['field_name'], row['field_name']),
             'old_value': row['old_value'],
             'new_value': row['new_value']
         })
-    if current_group is not None:
-        logs.append(current_group)
+    logs.sort(key=lambda g: g['_id'], reverse=True)
+    for g in logs:
+        del g['_id']
     return logs
 
 
@@ -204,10 +247,11 @@ def edit_log(log_id):
                 'wind': wind or None
             }
 
+            batch_id = str(uuid.uuid4())
             for field in EDITABLE_FIELDS:
                 old_val = old_data.get(field)
                 new_val = new_data.get(field)
-                record_audit_log(conn, log_id, field, old_val, new_val)
+                record_audit_log(conn, log_id, batch_id, field, old_val, new_val)
 
             conn.execute('''
                 UPDATE fishing_logs
@@ -292,12 +336,17 @@ def add_log():
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
         else:
-            conn.execute('''
+            cursor = conn.execute('''
                 INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at, temperature, humidity, wind)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, created_at, temperature or None, humidity or None, wind or None))
+            log_id = cursor.lastrowid
+
+            harvest_val = parse_harvest_value(harvest)
+            exhibit_id, revenue, visitors = create_exhibit_for_log(conn, log_id, spot, fish_species, harvest_val, created_at)
+
             conn.commit()
-            flash('记录添加成功！', 'success')
+            flash(f'记录添加成功！展品已上架，预计收益 ¥{revenue}，吸引访客 {visitors} 人', 'success')
             conn.close()
             return redirect(url_for('index'))
 
@@ -1201,6 +1250,353 @@ def export_search_csv():
     )
 
 
+REPUTATION_LEVELS = [
+    {'level': 1, 'name': '小有名气', 'min_score': 0, 'max_score': 999, 'icon': '⭐', 'color': '#a0aec0'},
+    {'level': 2, 'name': '声名鹊起', 'min_score': 1000, 'max_score': 4999, 'icon': '🌟', 'color': '#68d391'},
+    {'level': 3, 'name': '远近闻名', 'min_score': 5000, 'max_score': 19999, 'icon': '💫', 'color': '#63b3ed'},
+    {'level': 4, 'name': '名震一方', 'min_score': 20000, 'max_score': 49999, 'icon': '✨', 'color': '#f6ad55'},
+    {'level': 5, 'name': '举世闻名', 'min_score': 50000, 'max_score': 999999, 'icon': '🏆', 'color': '#fc8181'},
+]
+
+VISITOR_NAMES = [
+    '张先生', '李女士', '王先生', '赵阿姨', '陈叔叔',
+    '刘小朋友', '周女士', '吴先生', '郑奶奶', '孙同学',
+    '马大爷', '朱小姐', '胡教授', '林医生', '何工程师',
+    '高老板', '罗老师', '梁画家', '宋作家', '唐摄影师'
+]
+
+REVIEW_TEMPLATES = {
+    5: [
+        '太震撼了！这条鱼的品相堪称完美！',
+        '不虚此行！这是我见过最棒的展品！',
+        '陈列室越来越有意思了，强烈推荐！',
+        '收获满满，下次还要带朋友一起来！',
+        '这条鱼背后的故事一定很精彩！',
+        '精品中的精品！五星好评！',
+    ],
+    4: [
+        '很不错的展品，值得一看！',
+        '这条鱼挺有特色的，赞一个！',
+        '陈列得很用心，体验不错！',
+        '挺有意思的，下次还会再来。',
+        '鱼种很有特点，长见识了！',
+    ],
+    3: [
+        '一般般吧，还可以。',
+        '中规中矩，没有特别惊喜。',
+        '展品还不错，就是有点少。',
+        '还可以吧，随便看看。',
+        '期望值别太高就好。',
+    ],
+    2: [
+        '感觉有些普通了。',
+        '希望下次能看到更好的展品。',
+        '展品数量需要增加啊。',
+        '这次的展品差点意思。',
+        '还需努力啊。',
+    ],
+    1: [
+        '不太理想，期待下次改进。',
+        '展品有点少，下次再来看看吧。',
+        '希望能有更精品的展示。',
+        '这次体验一般般。',
+        '陈列方式可以再优化一下。',
+    ],
+}
+
+
+def get_reputation_level(total_score):
+    for lv in REPUTATION_LEVELS:
+        if lv['min_score'] <= total_score <= lv['max_score']:
+            return lv
+    return REPUTATION_LEVELS[-1]
+
+
+def calculate_exhibit_revenue(harvest_value, fish_species):
+    base = harvest_value * 50
+    species_bonus = {
+        '鲤鱼': 1.2, '草鱼': 1.3, '鲫鱼': 1.1, '鲢鱼': 1.0,
+        '鳙鱼': 1.4, '青鱼': 1.5, '鳊鱼': 1.2, '黑鱼': 1.8,
+        '鲈鱼': 2.0, '鳜鱼': 2.5, '罗非': 0.9, '鲶鱼': 1.3,
+        '黄颡': 1.6, '翘嘴': 2.2, '马口': 1.7, '白条': 0.8,
+    }
+    for key, bonus in species_bonus.items():
+        if key in fish_species:
+            base *= bonus
+            break
+    return round(base, 2)
+
+
+def generate_reviews(conn, exhibit_id, quality_score):
+    reviews = []
+    review_count = max(1, min(5, int(quality_score / 20) + random.randint(1, 3)))
+
+    rating_weights = []
+    if quality_score >= 80:
+        rating_weights = [(5, 50), (4, 35), (3, 12), (2, 2), (1, 1)]
+    elif quality_score >= 50:
+        rating_weights = [(5, 20), (4, 40), (3, 30), (2, 8), (1, 2)]
+    elif quality_score >= 20:
+        rating_weights = [(5, 5), (4, 20), (3, 40), (2, 25), (1, 10)]
+    else:
+        rating_weights = [(5, 2), (4, 8), (3, 25), (2, 40), (1, 25)]
+
+    ratings = [r for r, w in rating_weights for _ in range(w)]
+
+    for _ in range(review_count):
+        rating = random.choice(ratings)
+        templates = REVIEW_TEMPLATES.get(rating, REVIEW_TEMPLATES[3])
+        comment = random.choice(templates)
+        visitor_name = random.choice(VISITOR_NAMES)
+
+        conn.execute('''
+            INSERT INTO visitor_reviews (exhibit_id, rating, comment, visitor_name)
+            VALUES (?, ?, ?, ?)
+        ''', (exhibit_id, rating, comment, visitor_name))
+
+        reviews.append({
+            'rating': rating,
+            'comment': comment,
+            'visitor_name': visitor_name
+        })
+    return reviews
+
+
+def create_exhibit_for_log(conn, log_id, spot, fish_species, harvest_value, created_at):
+    exhibit_name = f'[{created_at}] {spot} · {fish_species}'
+
+    revenue = calculate_exhibit_revenue(harvest_value, fish_species)
+    visitor_count = max(5, min(100, int(revenue / 10) + random.randint(10, 50)))
+
+    cursor = conn.execute('''
+        INSERT INTO exhibits (log_id, exhibit_name, revenue, visitor_count)
+        VALUES (?, ?, ?, ?)
+    ''', (log_id, exhibit_name, revenue, visitor_count))
+    exhibit_id = cursor.lastrowid
+
+    quality_score = min(100, harvest_value * 10 + random.randint(0, 30))
+    generate_reviews(conn, exhibit_id, quality_score)
+
+    return exhibit_id, revenue, visitor_count
+
+
+def get_gallery_overview():
+    conn = get_db()
+    try:
+        total_revenue = conn.execute('SELECT COALESCE(SUM(revenue), 0) FROM exhibits').fetchone()[0]
+        total_visitors = conn.execute('SELECT COALESCE(SUM(visitor_count), 0) FROM exhibits').fetchone()[0]
+        total_exhibits = conn.execute('SELECT COUNT(*) FROM exhibits').fetchone()[0]
+
+        avg_rating_row = conn.execute('''
+            SELECT COALESCE(AVG(rating), 0) as avg_r, COUNT(*) as cnt
+            FROM visitor_reviews
+        ''').fetchone()
+        avg_rating = round(avg_rating_row['avg_r'], 1)
+        total_reviews = avg_rating_row['cnt']
+
+        reputation_score = int(total_revenue * 0.3 + total_visitors * 5 + avg_rating * 1000)
+        reputation = get_reputation_level(reputation_score)
+
+        next_level = None
+        for lv in REPUTATION_LEVELS:
+            if lv['level'] == reputation['level'] + 1:
+                next_level = lv
+                break
+
+        progress_pct = 0
+        if next_level:
+            progress = reputation_score - reputation['min_score']
+            needed = next_level['min_score'] - reputation['min_score']
+            progress_pct = min(100, round(progress / needed * 100, 1))
+        else:
+            progress_pct = 100
+
+        return {
+            'total_revenue': round(total_revenue, 2),
+            'total_visitors': total_visitors,
+            'total_exhibits': total_exhibits,
+            'avg_rating': avg_rating,
+            'total_reviews': total_reviews,
+            'reputation_score': reputation_score,
+            'reputation': reputation,
+            'next_level': next_level,
+            'progress_pct': progress_pct,
+        }
+    finally:
+        conn.close()
+
+
+def get_gallery_stats(period='all'):
+    conn = get_db()
+    try:
+        query_conditions = []
+        params = []
+
+        if period == 'month':
+            query_conditions.append("strftime('%Y-%m', e.created_at) = strftime('%Y-%m', 'now')")
+        elif period == 'year':
+            query_conditions.append("strftime('%Y', e.created_at) = strftime('%Y', 'now')")
+
+        where_clause = ''
+        if query_conditions:
+            where_clause = 'WHERE ' + ' AND '.join(query_conditions)
+
+        exhibits = conn.execute(f'''
+            SELECT e.*, l.spot, l.fish_species, l.harvest, l.created_at as log_date,
+                   (SELECT AVG(rating) FROM visitor_reviews WHERE exhibit_id = e.id) as avg_rating,
+                   (SELECT COUNT(*) FROM visitor_reviews WHERE exhibit_id = e.id) as review_count
+            FROM exhibits e
+            LEFT JOIN fishing_logs l ON e.log_id = l.id
+            {where_clause}
+            ORDER BY e.created_at DESC
+            LIMIT 50
+        ''', params).fetchall()
+
+        exhibit_list = []
+        for ex in exhibits:
+            ex_dict = dict(ex)
+            ex_dict['avg_rating'] = round(ex_dict['avg_rating'], 1) if ex_dict['avg_rating'] else 0
+            exhibit_list.append(ex_dict)
+
+        species_rank = conn.execute(f'''
+            SELECT l.fish_species,
+                   COUNT(e.id) as exhibit_count,
+                   COALESCE(SUM(e.revenue), 0) as total_revenue,
+                   COALESCE(SUM(e.visitor_count), 0) as total_visitors
+            FROM exhibits e
+            LEFT JOIN fishing_logs l ON e.log_id = l.id
+            {where_clause}
+            GROUP BY l.fish_species
+            ORDER BY total_revenue DESC
+            LIMIT 10
+        ''', params).fetchall()
+
+        spot_rank = conn.execute(f'''
+            SELECT l.spot,
+                   COUNT(e.id) as exhibit_count,
+                   COALESCE(SUM(e.revenue), 0) as total_revenue,
+                   COALESCE(SUM(e.visitor_count), 0) as total_visitors
+            FROM exhibits e
+            LEFT JOIN fishing_logs l ON e.log_id = l.id
+            {where_clause}
+            GROUP BY l.spot
+            ORDER BY total_visitors DESC
+            LIMIT 10
+        ''', params).fetchall()
+
+        recent_reviews = conn.execute(f'''
+            SELECT r.*, e.exhibit_name, l.spot
+            FROM visitor_reviews r
+            LEFT JOIN exhibits e ON r.exhibit_id = e.id
+            LEFT JOIN fishing_logs l ON e.log_id = l.id
+            ORDER BY r.created_at DESC
+            LIMIT 20
+        ''').fetchall()
+
+        return {
+            'exhibits': exhibit_list,
+            'species_rank': [dict(r) for r in species_rank],
+            'spot_rank': [dict(r) for r in spot_rank],
+            'recent_reviews': [dict(r) for r in recent_reviews],
+        }
+    finally:
+        conn.close()
+
+
+def migrate_existing_logs_to_exhibits():
+    conn = get_db()
+    try:
+        existing = conn.execute('SELECT COUNT(*) as cnt FROM exhibits').fetchone()['cnt']
+        if existing > 0:
+            return
+
+        logs = conn.execute('SELECT id, spot, fish_species, harvest, created_at FROM fishing_logs').fetchall()
+        for log in logs:
+            harvest_val = parse_harvest_value(log['harvest'])
+            create_exhibit_for_log(conn, log['id'], log['spot'], log['fish_species'], harvest_val, log['created_at'])
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@app.route('/gallery')
+def gallery():
+    period = request.args.get('period', 'all')
+    overview = get_gallery_overview()
+    stats = get_gallery_stats(period)
+    return render_template('gallery.html',
+                           overview=overview,
+                           stats=stats,
+                           period=period,
+                           reputation_levels=REPUTATION_LEVELS)
+
+
+@app.route('/gallery/exhibit/<int:exhibit_id>')
+def exhibit_detail(exhibit_id):
+    conn = get_db()
+    try:
+        exhibit = conn.execute('''
+            SELECT e.*, l.spot, l.fish_species, l.harvest, l.weather, l.bait,
+                   l.water_level, l.next_strategy, l.created_at as log_date,
+                   l.temperature, l.humidity, l.wind
+            FROM exhibits e
+            LEFT JOIN fishing_logs l ON e.log_id = l.id
+            WHERE e.id = ?
+        ''', (exhibit_id,)).fetchone()
+
+        if not exhibit:
+            flash('展品不存在！', 'error')
+            return redirect(url_for('gallery'))
+
+        reviews = conn.execute('''
+            SELECT * FROM visitor_reviews
+            WHERE exhibit_id = ?
+            ORDER BY created_at DESC
+        ''', (exhibit_id,)).fetchall()
+
+        rating_stats = conn.execute('''
+            SELECT rating, COUNT(*) as cnt
+            FROM visitor_reviews
+            WHERE exhibit_id = ?
+            GROUP BY rating
+            ORDER BY rating DESC
+        ''', (exhibit_id,)).fetchall()
+
+        rating_dist = {r['rating']: r['cnt'] for r in rating_stats}
+        total_ratings = sum(rating_dist.values())
+        avg_rating = round(sum(r * c for r, c in rating_dist.items()) / total_ratings, 1) if total_ratings > 0 else 0
+
+        exhibit_dict = dict(exhibit)
+        exhibit_dict['avg_rating'] = avg_rating
+        exhibit_dict['total_reviews'] = total_ratings
+
+        return render_template('exhibit_detail.html',
+                               exhibit=exhibit_dict,
+                               reviews=reviews,
+                               rating_dist=rating_dist,
+                               total_ratings=total_ratings)
+    finally:
+        conn.close()
+
+
+@app.context_processor
+def inject_gallery_summary():
+    try:
+        overview = get_gallery_overview()
+        return {
+            'gallery_reputation': overview['reputation'],
+            'gallery_revenue': overview['total_revenue'],
+            'gallery_exhibits': overview['total_exhibits'],
+        }
+    except Exception:
+        return {
+            'gallery_reputation': REPUTATION_LEVELS[0],
+            'gallery_revenue': 0,
+            'gallery_exhibits': 0,
+        }
+
+
 if __name__ == '__main__':
     init_db()
+    migrate_existing_logs_to_exhibits()
     app.run(debug=True, host='127.0.0.1', port=5000)

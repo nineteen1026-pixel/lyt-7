@@ -1,0 +1,213 @@
+{% extends 'base.html' %}
+
+{% block title %}陈列室经营 - 钓点日志{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>🏛️ 陈列室经营</h2>
+    <div class="filter-bar" style="margin: 0; padding: 0; border: none;">
+        <a href="{{ url_for('gallery', period='all') }}"
+           class="filter-btn {% if period == 'all' %}active{% endif %}">全部</a>
+        <a href="{{ url_for('gallery', period='month') }}"
+           class="filter-btn {% if period == 'month' %}active{% endif %}">本月</a>
+        <a href="{{ url_for('gallery', period='year') }}"
+           class="filter-btn {% if period == 'year' %}active{% endif %}">本年</a>
+    </div>
+</div>
+
+<div class="reputation-card" style="background: linear-gradient(135deg, {{ overview.reputation.color }}30 0%, {{ overview.reputation.color }}10 100%); border: 2px solid {{ overview.reputation.color }}50; border-radius: 16px; padding: 25px 30px; margin-bottom: 25px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
+        <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="font-size: 64px; line-height: 1;">{{ overview.reputation.icon }}</div>
+            <div>
+                <div style="font-size: 14px; color: #718096; margin-bottom: 4px;">当前口碑等级</div>
+                <div style="font-size: 28px; font-weight: 700; color: #2d3748; margin-bottom: 8px;">{{ overview.reputation.name }}</div>
+                <div style="font-size: 13px; color: #718096;">口碑积分：<strong style="color: #2d3748;">{{ overview.reputation_score }}</strong> 分</div>
+            </div>
+        </div>
+        <div style="flex: 1; min-width: 250px; max-width: 400px;">
+            {% if overview.next_level %}
+            <div style="display: flex; justify-content: space-between; font-size: 12px; color: #718096; margin-bottom: 8px;">
+                <span>{{ overview.reputation.icon }} {{ overview.reputation.name }}</span>
+                <span>{{ overview.next_level.icon }} {{ overview.next_level.name }}</span>
+            </div>
+            <div style="height: 14px; background: #edf2f7; border-radius: 7px; overflow: hidden; margin-bottom: 8px;">
+                <div style="height: 100%; width: {{ overview.progress_pct }}%; background: linear-gradient(90deg, {{ overview.reputation.color }}, {{ overview.next_level.color }}); border-radius: 7px; transition: width 0.5s ease;"></div>
+            </div>
+            <div style="font-size: 12px; color: #718096; text-align: right;">
+                距离下一等级还需 <strong style="color: {{ overview.next_level.color }};">{{ overview.next_level.min_score - overview.reputation_score }}</strong> 分
+            </div>
+            {% else %}
+            <div style="text-align: center; padding: 20px; color: {{ overview.reputation.color }}; font-weight: 600;">
+                🎉 已达到最高等级！继续保持！
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="report-stats">
+    <div class="stat-card" style="background: linear-gradient(135deg, #f0fff4, #c6f6d5);">
+        <div class="stat-icon">💰</div>
+        <div class="stat-info">
+            <div class="stat-value" style="color: #22543d;">¥{{ '%.2f'|format(overview.total_revenue) }}</div>
+            <div class="stat-label">累计收益</div>
+        </div>
+    </div>
+    <div class="stat-card" style="background: linear-gradient(135deg, #ebf8ff, #bee3f8);">
+        <div class="stat-icon">👥</div>
+        <div class="stat-info">
+            <div class="stat-value" style="color: #2a4365;">{{ overview.total_visitors }}</div>
+            <div class="stat-label">总访客数</div>
+        </div>
+    </div>
+    <div class="stat-card" style="background: linear-gradient(135deg, #faf5ff, #e9d8fd);">
+        <div class="stat-icon">🖼️</div>
+        <div class="stat-info">
+            <div class="stat-value" style="color: #44337a;">{{ overview.total_exhibits }}</div>
+            <div class="stat-label">展品总数</div>
+        </div>
+    </div>
+    <div class="stat-card" style="background: linear-gradient(135deg, #fffaf0, #feebc8);">
+        <div class="stat-icon">⭐</div>
+        <div class="stat-info">
+            <div class="stat-value" style="color: #744210;">{{ overview.avg_rating }} <span style="font-size: 16px; font-weight: 400;">/ 5.0</span></div>
+            <div class="stat-label">平均评分 ({{ overview.total_reviews }} 条评价)</div>
+        </div>
+    </div>
+</div>
+
+<div class="reputation-levels-section" style="margin-bottom: 30px;">
+    <h3 style="font-size: 16px; color: #2d3748; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #edf2f7;">📊 口碑等级一览</h3>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px;">
+        {% for lv in reputation_levels %}
+        <div style="padding: 15px; border-radius: 10px; border: 2px solid {% if lv.level == overview.reputation.level %}{{ lv.color }}{% else %}#e2e8f0{% endif %}; background: {% if lv.level == overview.reputation.level %}{{ lv.color }}15{% else %}#fff{% endif %}; text-align: center;">
+            <div style="font-size: 28px; margin-bottom: 6px;">{{ lv.icon }}</div>
+            <div style="font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 4px;">Lv.{{ lv.level }} {{ lv.name }}</div>
+            <div style="font-size: 11px; color: #718096;">{{ lv.min_score }} - {{ lv.max_score }} 分</div>
+            {% if lv.level == overview.reputation.level %}
+            <div style="margin-top: 8px; font-size: 11px; padding: 2px 8px; background: {{ lv.color }}; color: white; border-radius: 10px; display: inline-block;">当前</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="report-section">
+    <h3>🏆 鱼种收益排行榜</h3>
+    {% if stats.species_rank %}
+    <div class="spot-ranking">
+        {% for sp in stats.species_rank %}
+        <div class="ranking-item">
+            <div class="ranking-rank {% if loop.index == 1 %}rank-gold{% elif loop.index == 2 %}rank-silver{% elif loop.index == 3 %}rank-bronze{% endif %}">
+                {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+            </div>
+            <div class="ranking-info">
+                <div class="ranking-spot">🐟 {{ sp.fish_species }}</div>
+                <div class="ranking-bar-track">
+                    {% set max_rev = stats.species_rank[0].total_revenue if stats.species_rank else 1 %}
+                    <div class="ranking-bar-fill"
+                         style="width: {{ (sp.total_revenue / max_rev * 100) if max_rev > 0 else 0 }}%;">
+                    </div>
+                </div>
+            </div>
+            <div class="ranking-stats">
+                <div class="ranking-harvest">¥{{ '%.2f'|format(sp.total_revenue) }}</div>
+                <div class="ranking-logs">{{ sp.exhibit_count }} 件展品 · {{ sp.total_visitors }} 访客</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无鱼种收益数据</p></div>
+    {% endif %}
+</div>
+
+<div class="report-section">
+    <h3>📍 钓点人气排行榜</h3>
+    {% if stats.spot_rank %}
+    <div class="spot-ranking">
+        {% for sp in stats.spot_rank %}
+        <div class="ranking-item">
+            <div class="ranking-rank {% if loop.index == 1 %}rank-gold{% elif loop.index == 2 %}rank-silver{% elif loop.index == 3 %}rank-bronze{% endif %}">
+                {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}{{ loop.index }}{% endif %}
+            </div>
+            <div class="ranking-info">
+                <div class="ranking-spot">📍 {{ sp.spot }}</div>
+                <div class="ranking-bar-track">
+                    {% set max_visit = stats.spot_rank[0].total_visitors if stats.spot_rank else 1 %}
+                    <div class="ranking-bar-fill"
+                         style="width: {{ (sp.total_visitors / max_visit * 100) if max_visit > 0 else 0 }}%; background: linear-gradient(90deg, #48bb78, #38a169);">
+                    </div>
+                </div>
+            </div>
+            <div class="ranking-stats">
+                <div class="ranking-harvest" style="color: #3182ce;">{{ sp.total_visitors }} 人</div>
+                <div class="ranking-logs">{{ sp.exhibit_count }} 件展品 · ¥{{ '%.2f'|format(sp.total_revenue) }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无钓点人气数据</p></div>
+    {% endif %}
+</div>
+
+<div class="report-section">
+    <h3>🖼️ 展品列表</h3>
+    {% if stats.exhibits %}
+    <div class="exhibit-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px;">
+        {% for ex in stats.exhibits %}
+        <a href="{{ url_for('exhibit_detail', exhibit_id=ex.id) }}" style="text-decoration: none; color: inherit;">
+            <div class="exhibit-card" style="border: 1px solid #e2e8f0; border-radius: 10px; padding: 18px; background: #fff; transition: all 0.25s ease; cursor: pointer; height: 100%;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                    <div style="font-size: 15px; font-weight: 600; color: #2d3748; line-height: 1.4; flex: 1; padding-right: 10px;">🐟 {{ ex.fish_species }}</div>
+                    <div style="font-size: 12px; color: #a0aec0; white-space: nowrap;">{{ ex.log_date }}</div>
+                </div>
+                <div style="font-size: 13px; color: #718096; margin-bottom: 12px;">📍 {{ ex.spot }}</div>
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px;">
+                    <span style="padding: 3px 10px; background: #f0fff4; color: #22543d; border-radius: 12px; font-size: 12px; font-weight: 500;">💰 ¥{{ '%.2f'|format(ex.revenue) }}</span>
+                    <span style="padding: 3px 10px; background: #ebf8ff; color: #2a4365; border-radius: 12px; font-size: 12px; font-weight: 500;">👥 {{ ex.visitor_count }}</span>
+                    <span style="padding: 3px 10px; background: #fffaf0; color: #744210; border-radius: 12px; font-size: 12px; font-weight: 500;">⭐ {{ ex.avg_rating }} ({{ ex.review_count }})</span>
+                </div>
+                <div style="font-size: 12px; color: #4a5568; padding-top: 10px; border-top: 1px solid #edf2f7;">
+                    <span style="color: #718096;">收获：</span><strong>{{ ex.harvest }}</strong>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无展品，快去添加钓鱼记录吧！</p><a href="{{ url_for('add_log') }}" class="btn btn-primary" style="margin-top: 15px;">+ 新增记录</a></div>
+    {% endif %}
+</div>
+
+<div class="report-section">
+    <h3>💬 最新访客评价</h3>
+    {% if stats.recent_reviews %}
+    <div class="ratings-list">
+        {% for review in stats.recent_reviews %}
+        <div class="rating-card">
+            <div class="rating-card-header">
+                <div>
+                    <strong style="color: #2d3748;">{{ review.visitor_name or '匿名访客' }}</strong>
+                    <span class="rating-card-stars" style="margin-left: 8px;">
+                        {% for i in range(5) %}
+                            {% if i < review.rating %}★{% else %}☆{% endif %}
+                        {% endfor %}
+                    </span>
+                </div>
+                <span class="rating-card-date">{{ review.created_at[:16] if review.created_at else '' }}</span>
+            </div>
+            <div style="font-size: 12px; color: #718096; margin-bottom: 6px;">
+                🖼️ <a href="{{ url_for('exhibit_detail', exhibit_id=review.exhibit_id) }}" style="color: #667eea; text-decoration: none;">{{ review.exhibit_name }}</a>
+            </div>
+            <div class="rating-card-comment">{{ review.comment }}</div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state"><p>暂无访客评价</p></div>
+    {% endif %}
+</div>
+{% endblock %}
