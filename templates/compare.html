@@ -1,0 +1,400 @@
+{% extends 'base.html' %}
+
+{% block title %}记录对比 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🔄 垂钓记录对比</h2>
+        {% if show_results %}
+            <a href="{{ url_for('compare_select') }}" class="btn btn-secondary">重新选择</a>
+        {% endif %}
+    </div>
+
+    {% if not show_results %}
+        <div class="compare-select-section">
+            <div class="compare-select-hint">
+                <p>请选择两条垂钓记录进行横向对比，分析环境差异与收获差异</p>
+            </div>
+
+            <div class="compare-selectors">
+                <div class="compare-selector">
+                    <div class="selector-label">
+                        <span class="selector-badge selector-badge-1">记录 A</span>
+                    </div>
+                    <div class="selector-log-list" id="logList1">
+                        {% for log in log_list %}
+                            <div class="selector-log-item {% if log1_id == log['id'] %}selected{% endif %}"
+                                 data-log-id="{{ log['id'] }}"
+                                 data-side="1"
+                                 onclick="selectLog({{ log['id'] }}, 1)">
+                                <div class="selector-log-header">
+                                    <span class="selector-log-date">{{ log['created_at'] }}</span>
+                                    <span class="selector-log-spot">📍 {{ log['spot'] }}</span>
+                                </div>
+                                <div class="selector-log-body">
+                                    <span class="selector-log-weather">{{ log['weather'] }}</span>
+                                    <span class="selector-log-harvest {% if log['harvest_value'] > 0 %}good{% else %}bad{% endif %}">
+                                        🎣 {{ log['harvest'] }}
+                                    </span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <div class="compare-vs">
+                    <div class="vs-text">VS</div>
+                </div>
+
+                <div class="compare-selector">
+                    <div class="selector-label">
+                        <span class="selector-badge selector-badge-2">记录 B</span>
+                    </div>
+                    <div class="selector-log-list" id="logList2">
+                        {% for log in log_list %}
+                            <div class="selector-log-item {% if log2_id == log['id'] %}selected{% endif %}"
+                                 data-log-id="{{ log['id'] }}"
+                                 data-side="2"
+                                 onclick="selectLog({{ log['id'] }}, 2)">
+                                <div class="selector-log-header">
+                                    <span class="selector-log-date">{{ log['created_at'] }}</span>
+                                    <span class="selector-log-spot">📍 {{ log['spot'] }}</span>
+                                </div>
+                                <div class="selector-log-body">
+                                    <span class="selector-log-weather">{{ log['weather'] }}</span>
+                                    <span class="selector-log-harvest {% if log['harvest_value'] > 0 %}good{% else %}bad{% endif %}">
+                                        🎣 {{ log['harvest'] }}
+                                    </span>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="compare-actions">
+                <button class="btn btn-primary btn-compare" id="compareBtn" onclick="startCompare()" disabled>
+                    开始对比
+                </button>
+                <div class="compare-selected-info" id="selectedInfo">
+                    请选择两条记录
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    {% if show_results %}
+        <div class="compare-results">
+            <div class="compare-header-cards">
+                <div class="compare-header-card compare-card-1">
+                    <div class="compare-card-badge">记录 A</div>
+                    <div class="compare-card-title">{{ log1['spot'] }}</div>
+                    <div class="compare-card-meta">
+                        <span>📅 {{ log1['created_at'] }}</span>
+                        <span>🎣 {{ log1['harvest'] }}</span>
+                    </div>
+                    <a href="{{ url_for('log_detail', log_id=log1['id']) }}" class="compare-card-link">查看详情 →</a>
+                </div>
+                <div class="compare-vs-big">VS</div>
+                <div class="compare-header-card compare-card-2">
+                    <div class="compare-card-badge">记录 B</div>
+                    <div class="compare-card-title">{{ log2['spot'] }}</div>
+                    <div class="compare-card-meta">
+                        <span>📅 {{ log2['created_at'] }}</span>
+                        <span>🎣 {{ log2['harvest'] }}</span>
+                    </div>
+                    <a href="{{ url_for('log_detail', log_id=log2['id']) }}" class="compare-card-link">查看详情 →</a>
+                </div>
+            </div>
+
+            <div class="conclusions-section">
+                <h3 class="section-title">📊 对比分析结论</h3>
+                <div class="conclusions-grid">
+                    {% for conclusion in conclusions %}
+                        <div class="conclusion-card conclusion-{{ conclusion['type'] }}">
+                            <div class="conclusion-icon">{{ conclusion['icon'] }}</div>
+                            <div class="conclusion-content">
+                                <div class="conclusion-title">{{ conclusion['title'] }}</div>
+                                <div class="conclusion-detail">{{ conclusion['detail'] }}</div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="harvest-compare-section">
+                <h3 class="section-title">🎣 收获对比</h3>
+                <div class="harvest-compare-card">
+                    <div class="harvest-compare-stats">
+                        <div class="harvest-stat harvest-stat-1 {% if harvest_analysis['winner'] == 1 %}winner{% endif %}">
+                            <div class="harvest-stat-label">记录 A</div>
+                            <div class="harvest-stat-value">{{ harvest_analysis['display1'] }}</div>
+                            <div class="harvest-stat-num">数值: {{ harvest_analysis['value1'] }}</div>
+                            {% if harvest_analysis['winner'] == 1 %}
+                                <div class="winner-badge">🏆 更优</div>
+                            {% endif %}
+                        </div>
+                        <div class="harvest-compare-center">
+                            <div class="harvest-diff-value">
+                                {% if harvest_analysis['diff'] > 0 %}
+                                    +{{ harvest_analysis['diff'] }}
+                                {% else %}
+                                    {{ harvest_analysis['diff'] }}
+                                {% endif %}
+                            </div>
+                            <div class="harvest-diff-pct">
+                                {% if harvest_analysis['pct'] > 0 %}
+                                    (+{{ harvest_analysis['pct'] }}%)
+                                {% else %}
+                                    ({{ harvest_analysis['pct'] }}%)
+                                {% endif %}
+                            </div>
+                            <div class="harvest-diff-label">B 相对 A</div>
+                        </div>
+                        <div class="harvest-stat harvest-stat-2 {% if harvest_analysis['winner'] == 2 %}winner{% endif %}">
+                            <div class="harvest-stat-label">记录 B</div>
+                            <div class="harvest-stat-value">{{ harvest_analysis['display2'] }}</div>
+                            <div class="harvest-stat-num">数值: {{ harvest_analysis['value2'] }}</div>
+                            {% if harvest_analysis['winner'] == 2 %}
+                                <div class="winner-badge">🏆 更优</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="compare-detail-section">
+                <h3 class="section-title">🌤️ 环境因素对比</h3>
+
+                {% if env_diffs %}
+                    <div class="compare-subsection">
+                        <h4 class="subsection-title">
+                            <span class="diff-badge">差异项</span>
+                            共 {{ env_diffs|length }} 项不同
+                        </h4>
+                        <div class="compare-table">
+                            {% for diff in env_diffs %}
+                                <div class="compare-row compare-row-diff">
+                                    <div class="compare-field-label">{{ diff['label'] }}</div>
+                                    <div class="compare-value compare-value-1 {% if harvest_analysis['winner'] == 1 %}highlight{% endif %}">
+                                        {{ diff['value1'] or '-' }}
+                                    </div>
+                                    <div class="compare-arrow">→</div>
+                                    <div class="compare-value compare-value-2 {% if harvest_analysis['winner'] == 2 %}highlight{% endif %}">
+                                        {{ diff['value2'] or '-' }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if env_similar %}
+                    <div class="compare-subsection">
+                        <h4 class="subsection-title">
+                            <span class="same-badge">相同项</span>
+                            共 {{ env_similar|length }} 项相同
+                        </h4>
+                        <div class="compare-table">
+                            {% for sim in env_similar %}
+                                <div class="compare-row compare-row-same">
+                                    <div class="compare-field-label">{{ sim['label'] }}</div>
+                                    <div class="compare-value compare-value-both" colspan="3">
+                                        ✅ {{ sim['value'] or '-' }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="compare-detail-section">
+                <h3 class="section-title">🐟 收获与策略对比</h3>
+
+                {% if harvest_diffs %}
+                    <div class="compare-subsection">
+                        <h4 class="subsection-title">
+                            <span class="diff-badge">差异项</span>
+                            共 {{ harvest_diffs|length }} 项不同
+                        </h4>
+                        <div class="compare-table">
+                            {% for diff in harvest_diffs %}
+                                <div class="compare-row compare-row-diff">
+                                    <div class="compare-field-label">{{ diff['label'] }}</div>
+                                    <div class="compare-value compare-value-1">
+                                        {{ diff['value1'] or '-' }}
+                                    </div>
+                                    <div class="compare-arrow">→</div>
+                                    <div class="compare-value compare-value-2">
+                                        {{ diff['value2'] or '-' }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+
+                {% if harvest_similar %}
+                    <div class="compare-subsection">
+                        <h4 class="subsection-title">
+                            <span class="same-badge">相同项</span>
+                            共 {{ harvest_similar|length }} 项相同
+                        </h4>
+                        <div class="compare-table">
+                            {% for sim in harvest_similar %}
+                                <div class="compare-row compare-row-same">
+                                    <div class="compare-field-label">{{ sim['label'] }}</div>
+                                    <div class="compare-value compare-value-both" colspan="3">
+                                        ✅ {{ sim['value'] or '-' }}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+
+            {% if other_fields %}
+                <div class="compare-detail-section">
+                    <h3 class="section-title">📝 其他信息</h3>
+                    <div class="compare-table">
+                        {% for field in other_fields %}
+                            <div class="compare-row {% if field['same'] %}compare-row-same{% else %}compare-row-diff{% endif %}">
+                                <div class="compare-field-label">{{ field['label'] }}</div>
+                                {% if field['same'] %}
+                                    <div class="compare-value compare-value-both" colspan="3">
+                                        {{ field['value1'] or '-' }}
+                                    </div>
+                                {% else %}
+                                    <div class="compare-value compare-value-1">
+                                        {{ field['value1'] or '-' }}
+                                    </div>
+                                    <div class="compare-arrow">→</div>
+                                    <div class="compare-value compare-value-2">
+                                        {{ field['value2'] or '-' }}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if log1_photos or log2_photos %}
+                <div class="compare-detail-section">
+                    <h3 class="section-title">📷 照片对比</h3>
+                    <div class="photos-compare-grid">
+                        <div class="photos-compare-col">
+                            <div class="photos-compare-label">记录 A</div>
+                            {% if log1_photos %}
+                                <div class="photos-grid">
+                                    {% for photo in log1_photos %}
+                                        <div class="photo-item">
+                                            <img src="{{ photo['url'] }}" alt="{{ photo['caption'] or '照片' }}">
+                                            {% if photo['caption'] %}
+                                                <div class="photo-caption">{{ photo['caption'] }}</div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="no-photos-hint">暂无照片</div>
+                            {% endif %}
+                        </div>
+                        <div class="photos-compare-col">
+                            <div class="photos-compare-label">记录 B</div>
+                            {% if log2_photos %}
+                                <div class="photos-grid">
+                                    {% for photo in log2_photos %}
+                                        <div class="photo-item">
+                                            <img src="{{ photo['url'] }}" alt="{{ photo['caption'] or '照片' }}">
+                                            {% if photo['caption'] %}
+                                                <div class="photo-caption">{{ photo['caption'] }}</div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div class="no-photos-hint">暂无照片</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="compare-actions-bottom">
+                <a href="{{ url_for('compare_select') }}" class="btn btn-secondary">重新选择记录</a>
+                <div class="quick-select">
+                    <span>快速切换：</span>
+                    <button class="btn btn-small" onclick="swapLogs()">🔄 交换 A/B</button>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+
+    <script>
+        let selectedLog1 = {{ log1_id or 'null' }};
+        let selectedLog2 = {{ log2_id or 'null' }};
+        let isSelectPage = {{ 'false' if show_results else 'true' }};
+
+        function selectLog(logId, side) {
+            if (side === 1) {
+                selectedLog1 = logId;
+            } else {
+                selectedLog2 = logId;
+            }
+            updateSelectionUI();
+        }
+
+        function updateSelectionUI() {
+            if (!isSelectPage) return;
+
+            document.querySelectorAll('.selector-log-item[data-side="1"]').forEach(item => {
+                const logId = parseInt(item.dataset.logId);
+                item.classList.toggle('selected', logId === selectedLog1);
+            });
+            document.querySelectorAll('.selector-log-item[data-side="2"]').forEach(item => {
+                const logId = parseInt(item.dataset.logId);
+                item.classList.toggle('selected', logId === selectedLog2);
+            });
+
+            const btn = document.getElementById('compareBtn');
+            const info = document.getElementById('selectedInfo');
+
+            if (btn && info) {
+                if (selectedLog1 && selectedLog2) {
+                    btn.disabled = false;
+                    info.textContent = `已选择记录 #${selectedLog1} 和 #${selectedLog2}`;
+                } else if (selectedLog1) {
+                    btn.disabled = true;
+                    info.textContent = `已选择记录 A (#${selectedLog1})，请选择记录 B`;
+                } else if (selectedLog2) {
+                    btn.disabled = true;
+                    info.textContent = `已选择记录 B (#${selectedLog2})，请选择记录 A`;
+                } else {
+                    btn.disabled = true;
+                    info.textContent = '请选择两条记录';
+                }
+            }
+        }
+
+        function startCompare() {
+            if (selectedLog1 && selectedLog2) {
+                window.location.href = `/compare/${selectedLog1}/${selectedLog2}`;
+            }
+        }
+
+        function swapLogs() {
+            {% if show_results %}
+                window.location.href = `/compare/{{ log2_id }}/{{ log1_id }}`;
+            {% endif %}
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            if (isSelectPage) {
+                updateSelectionUI();
+            }
+        });
+    </script>
+{% endblock %}

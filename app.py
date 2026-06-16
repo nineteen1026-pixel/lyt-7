@@ -3442,6 +3442,298 @@ def gallery():
     )
 
 
+COMPARE_ENV_FIELDS = [
+    ('spot', '钓点'),
+    ('weather', '天气'),
+    ('temperature', '温度'),
+    ('humidity', '湿度'),
+    ('wind', '风力'),
+    ('water_level', '水位'),
+]
+
+COMPARE_HARVEST_FIELDS = [
+    ('fish_species', '鱼种'),
+    ('bait', '饵料'),
+    ('harvest', '收获情况'),
+]
+
+COMPARE_OTHER_FIELDS = [
+    ('created_at', '垂钓日期'),
+    ('next_strategy', '下次策略'),
+]
+
+
+def analyze_env_differences(log1, log2):
+    differences = []
+    similarities = []
+
+    for field_key, field_label in COMPARE_ENV_FIELDS:
+        val1 = log1.get(field_key) or ''
+        val2 = log2.get(field_key) or ''
+
+        if val1 == val2:
+            similarities.append({
+                'field': field_key,
+                'label': field_label,
+                'value': val1
+            })
+        else:
+            differences.append({
+                'field': field_key,
+                'label': field_label,
+                'value1': val1,
+                'value2': val2
+            })
+
+    return differences, similarities
+
+
+def analyze_harvest_differences(log1, log2):
+    differences = []
+    similarities = []
+
+    harvest_val1 = parse_harvest_value(log1.get('harvest', ''))
+    harvest_val2 = parse_harvest_value(log2.get('harvest', ''))
+
+    for field_key, field_label in COMPARE_HARVEST_FIELDS:
+        val1 = log1.get(field_key) or ''
+        val2 = log2.get(field_key) or ''
+
+        if val1 == val2:
+            similarities.append({
+                'field': field_key,
+                'label': field_label,
+                'value': val1
+            })
+        else:
+            differences.append({
+                'field': field_key,
+                'label': field_label,
+                'value1': val1,
+                'value2': val2
+            })
+
+    harvest_diff = harvest_val2 - harvest_val1
+    harvest_pct = 0
+    if harvest_val1 > 0:
+        harvest_pct = round((harvest_diff / harvest_val1) * 100, 1)
+
+    harvest_analysis = {
+        'value1': harvest_val1,
+        'value2': harvest_val2,
+        'diff': harvest_diff,
+        'pct': harvest_pct,
+        'winner': 1 if harvest_val1 > harvest_val2 else (2 if harvest_val2 > harvest_val1 else 0),
+        'display1': log1.get('harvest', ''),
+        'display2': log2.get('harvest', ''),
+    }
+
+    return differences, similarities, harvest_analysis
+
+
+def generate_conclusions(log1, log2, env_diffs, harvest_analysis):
+    conclusions = []
+
+    if harvest_analysis['winner'] == 1:
+        conclusions.append({
+            'type': 'harvest',
+            'icon': '🎣',
+            'title': '收获对比',
+            'detail': f"记录 #{log1['id']} 收获更优，比记录 #{log2['id']} 多 {abs(harvest_analysis['diff'])}（{abs(harvest_analysis['pct'])}%）"
+        })
+    elif harvest_analysis['winner'] == 2:
+        conclusions.append({
+            'type': 'harvest',
+            'icon': '🎣',
+            'title': '收获对比',
+            'detail': f"记录 #{log2['id']} 收获更优，比记录 #{log1['id']} 多 {abs(harvest_analysis['diff'])}（{abs(harvest_analysis['pct'])}%）"
+        })
+    else:
+        conclusions.append({
+            'type': 'harvest',
+            'icon': '🎣',
+            'title': '收获对比',
+            'detail': '两条记录收获量相当'
+        })
+
+    spot_diff = next((d for d in env_diffs if d['field'] == 'spot'), None)
+    if spot_diff:
+        conclusions.append({
+            'type': 'env',
+            'icon': '📍',
+            'title': '钓点差异',
+            'detail': f"钓点不同（{spot_diff['value1']} vs {spot_diff['value2']}），可能是影响收获的主要因素"
+        })
+
+    weather_diff = next((d for d in env_diffs if d['field'] == 'weather'), None)
+    if weather_diff:
+        conclusions.append({
+            'type': 'env',
+            'icon': '🌤️',
+            'title': '天气差异',
+            'detail': f"天气状况不同（{weather_diff['value1']} vs {weather_diff['value2']}），鱼的活性可能有差异"
+        })
+
+    water_diff = next((d for d in env_diffs if d['field'] == 'water_level'), None)
+    if water_diff:
+        conclusions.append({
+            'type': 'env',
+            'icon': '💧',
+            'title': '水位差异',
+            'detail': f"水位不同（{water_diff['value1']} vs {water_diff['value2']}），会影响鱼的栖息位置"
+        })
+
+    bait_diff = next((d for d in COMPARE_HARVEST_FIELDS if d[0] == 'bait'), None)
+    if bait_diff:
+        bait_val1 = log1.get('bait', '')
+        bait_val2 = log2.get('bait', '')
+        if bait_val1 != bait_val2:
+            conclusions.append({
+                'type': 'strategy',
+                'icon': '🐛',
+                'title': '饵料差异',
+                'detail': f"使用的饵料不同（{bait_val1} vs {bait_val2}），建议多次验证找出最适合的饵料"
+            })
+
+    temp_diff = next((d for d in env_diffs if d['field'] == 'temperature'), None)
+    if temp_diff and temp_diff['value1'] and temp_diff['value2']:
+        conclusions.append({
+            'type': 'env',
+            'icon': '🌡️',
+            'title': '温度差异',
+            'detail': f"温度不同（{temp_diff['value1']} vs {temp_diff['value2']}），水温会影响鱼的进食活跃度"
+        })
+
+    if not env_diffs:
+        conclusions.append({
+            'type': 'env',
+            'icon': '✅',
+            'title': '环境相似',
+            'detail': '两次垂钓环境条件基本一致，可作为对照组分析其他因素'
+        })
+
+    return conclusions
+
+
+@app.route('/compare')
+def compare_select():
+    conn = get_db()
+
+    logs = conn.execute('''
+        SELECT id, spot, created_at, harvest, fish_species, weather
+        FROM fishing_logs
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 100
+    ''').fetchall()
+
+    log_list = []
+    for log in logs:
+        log_dict = dict(log)
+        log_dict['harvest_value'] = parse_harvest_value(log['harvest'])
+        log_list.append(log_dict)
+
+    total = conn.execute(
+        'SELECT COUNT(*) as cnt FROM fishing_logs WHERE deleted_at IS NULL'
+    ).fetchone()['cnt']
+
+    conn.close()
+
+    log1_id = request.args.get('log1', type=int)
+    log2_id = request.args.get('log2', type=int)
+
+    return render_template(
+        'compare.html',
+        log_list=log_list,
+        total_logs=total,
+        log1_id=log1_id,
+        log2_id=log2_id,
+        show_results=False
+    )
+
+
+@app.route('/compare/<int:log_id1>/<int:log_id2>')
+def compare_results(log_id1, log_id2):
+    conn = get_db()
+
+    log1 = conn.execute(
+        'SELECT * FROM fishing_logs WHERE id = ? AND deleted_at IS NULL',
+        (log_id1,)
+    ).fetchone()
+
+    log2 = conn.execute(
+        'SELECT * FROM fishing_logs WHERE id = ? AND deleted_at IS NULL',
+        (log_id2,)
+    ).fetchone()
+
+    if log1 is None or log2 is None:
+        conn.close()
+        flash('记录不存在！', 'error')
+        return redirect(url_for('compare_select'))
+
+    log1_dict = dict(log1)
+    log2_dict = dict(log2)
+
+    log1_photos = get_log_photos(conn, log_id1)
+    log2_photos = get_log_photos(conn, log_id2)
+
+    logs = conn.execute('''
+        SELECT id, spot, created_at, harvest, fish_species, weather
+        FROM fishing_logs
+        WHERE deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 100
+    ''').fetchall()
+
+    log_list = []
+    for log in logs:
+        log_dict = dict(log)
+        log_dict['harvest_value'] = parse_harvest_value(log['harvest'])
+        log_list.append(log_dict)
+
+    total = conn.execute(
+        'SELECT COUNT(*) as cnt FROM fishing_logs WHERE deleted_at IS NULL'
+    ).fetchone()['cnt']
+
+    conn.close()
+
+    env_diffs, env_similar = analyze_env_differences(log1_dict, log2_dict)
+    harvest_diffs, harvest_similar, harvest_analysis = analyze_harvest_differences(log1_dict, log2_dict)
+    conclusions = generate_conclusions(log1_dict, log2_dict, env_diffs, harvest_analysis)
+
+    other_fields = []
+    for field_key, field_label in COMPARE_OTHER_FIELDS:
+        val1 = log1_dict.get(field_key) or ''
+        val2 = log2_dict.get(field_key) or ''
+        other_fields.append({
+            'field': field_key,
+            'label': field_label,
+            'value1': val1,
+            'value2': val2,
+            'same': val1 == val2
+        })
+
+    return render_template(
+        'compare.html',
+        log_list=log_list,
+        total_logs=total,
+        log1_id=log_id1,
+        log2_id=log_id2,
+        log1=log1_dict,
+        log2=log2_dict,
+        log1_photos=log1_photos,
+        log2_photos=log2_photos,
+        show_results=True,
+        env_diffs=env_diffs,
+        env_similar=env_similar,
+        harvest_diffs=harvest_diffs,
+        harvest_similar=harvest_similar,
+        harvest_analysis=harvest_analysis,
+        conclusions=conclusions,
+        other_fields=other_fields
+    )
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='127.0.0.1', port=5000)
