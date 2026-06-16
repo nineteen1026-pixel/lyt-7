@@ -14,6 +14,7 @@
                 <a href="{{ url_for('index') }}" class="{% if request.endpoint == 'index' %}active{% endif %}">首页</a>
                 <a href="{{ url_for('add_log') }}" class="{% if request.endpoint == 'add_log' %}active{% endif %}">新增记录</a>
                 <a href="{{ url_for('spots_list') }}" class="{% if request.endpoint in ['spots_list', 'spot_detail', 'add_spot', 'edit_spot'] %}active{% endif %}">钓点管理</a>
+                <a href="{{ url_for('wiki_list') }}" class="{% if request.endpoint in ['wiki_list', 'wiki_detail', 'wiki_add', 'wiki_edit'] %}active{% endif %}">📚 钓点百科</a>
                 <a href="{{ url_for('spots_list', filter='favorite') }}" class="{% if request.endpoint == 'spots_list' and request.args.get('filter') == 'favorite' %}active{% endif %}">⭐ 收藏评分</a>
                 <a href="{{ url_for('by_spot') }}" class="{% if request.endpoint == 'by_spot' %}active{% endif %}">按钓点</a>
                 <a href="{{ url_for('by_date') }}" class="{% if request.endpoint == 'by_date' %}active{% endif %}">按日期</a>

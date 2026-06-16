@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}钓点百科 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>📚 钓点百科</h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('wiki_add') }}" class="btn btn-primary">+ 新增百科</a>
+        </div>
+    </div>
+
+    <div class="wiki-stats-grid">
+        <div class="wiki-stat-card">
+            <div class="wiki-stat-icon">📖</div>
+            <div class="wiki-stat-content">
+                <div class="wiki-stat-label">百科总数</div>
+                <div class="wiki-stat-value">{{ total }}</div>
+            </div>
+        </div>
+        <div class="wiki-stat-card warn">
+            <div class="wiki-stat-icon">🚫</div>
+            <div class="wiki-stat-content">
+                <div class="wiki-stat-label">有禁钓规定</div>
+                <div class="wiki-stat-value">{{ ban_count }}</div>
+            </div>
+        </div>
+        <div class="wiki-stat-card info">
+            <div class="wiki-stat-icon">💰</div>
+            <div class="wiki-stat-content">
+                <div class="wiki-stat-label">收费钓点</div>
+                <div class="wiki-stat-value">{{ paid_count }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="search-section">
+        <form method="GET" action="{{ url_for('wiki_list') }}" class="search-bar-form">
+            <div class="search-input-group">
+                <input type="text" name="q" placeholder="搜索钓点名称、路况、停车、禁钓、技巧..."
+                       value="{{ keyword }}" class="search-input">
+                <button type="submit" class="btn btn-primary">🔍 搜索</button>
+                {% if keyword %}
+                    <a href="{{ url_for('wiki_list') }}" class="btn btn-secondary">清除</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">禁钓：</span>
+            <a href="{{ url_for('wiki_list', sort=sort_by, q=keyword, fee=has_fee_filter) }}"
+               class="filter-btn {% if has_ban_filter is none %}active{% endif %}">全部</a>
+            <a href="{{ url_for('wiki_list', sort=sort_by, q=keyword, fee=has_fee_filter, ban='no') }}"
+               class="filter-btn {% if has_ban_filter == 'no' %}active{% endif %}">✅ 无禁钓</a>
+            <a href="{{ url_for('wiki_list', sort=sort_by, q=keyword, fee=has_fee_filter, ban='yes') }}"
+               class="filter-btn {% if has_ban_filter == 'yes' %}active{% endif %}">⚠️ 有禁钓</a>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">收费：</span>
+            <a href="{{ url_for('wiki_list', sort=sort_by, q=keyword, ban=has_ban_filter) }}"
+               class="filter-btn {% if has_fee_filter is none %}active{% endif %}">全部</a>
+            <a href="{{ url_for('wiki_list', sort=sort_by, q=keyword, ban=has_ban_filter, fee='free') }}"
+               class="filter-btn {% if has_fee_filter == 'free' %}active{% endif %}">🆓 免费</a>
+            <a href="{{ url_for('wiki_list', sort=sort_by, q=keyword, ban=has_ban_filter, fee='paid') }}"
+               class="filter-btn {% if has_fee_filter == 'paid' %}active{% endif %}">💰 收费</a>
+        </div>
+        <div class="filter-group">
+            <span class="filter-label">排序：</span>
+            <a href="{{ url_for('wiki_list', q=keyword, ban=has_ban_filter, fee=has_fee_filter, sort='recent') }}"
+               class="filter-btn {% if sort_by == 'recent' %}active{% endif %}">最近更新</a>
+            <a href="{{ url_for('wiki_list', q=keyword, ban=has_ban_filter, fee=has_fee_filter, sort='name') }}"
+               class="filter-btn {% if sort_by == 'name' %}active{% endif %}">按名称</a>
+            <a href="{{ url_for('wiki_list', q=keyword, ban=has_ban_filter, fee=has_fee_filter, sort='visit') }}"
+               class="filter-btn {% if sort_by == 'visit' %}active{% endif %}">按到访</a>
+            <a href="{{ url_for('wiki_list', q=keyword, ban=has_ban_filter, fee=has_fee_filter, sort='info_date') }}"
+               class="filter-btn {% if sort_by == 'info_date' %}active{% endif %}">按核实日期</a>
+        </div>
+    </div>
+
+    {% if wikis %}
+        <div class="wiki-grid">
+            {% for wiki in wikis %}
+                <div class="wiki-card">
+                    <div class="wiki-card-header">
+                        <h3 class="wiki-name">
+                            <a href="{{ url_for('wiki_detail', wiki_id=wiki['id']) }}">{{ wiki['spot_name'] }}</a>
+                        </h3>
+                        <div class="wiki-tags">
+                            {% if wiki['ban_info'] %}
+                                <span class="wiki-tag tag-warn">⚠️ 有禁钓</span>
+                            {% else %}
+                                <span class="wiki-tag tag-ok">✅ 无禁钓</span>
+                            {% endif %}
+                            {% if wiki['fishing_fee'] and '免费' not in wiki['fishing_fee'] %}
+                                <span class="wiki-tag tag-fee">💰 收费</span>
+                            {% elif wiki['fishing_fee'] and '免费' in wiki['fishing_fee'] %}
+                                <span class="wiki-tag tag-free">🆓 免费</span>
+                            {% elif not wiki['fishing_fee'] %}
+                                <span class="wiki-tag tag-unknown">❓ 未知</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="wiki-meta">
+                        <span class="wiki-meta-item">📍 到访 {{ wiki['visit_count'] or 0 }} 次</span>
+                        {% if wiki['info_date'] %}
+                            <span class="wiki-meta-item">📅 核实: {{ wiki['info_date'][:10] }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="wiki-info-grid">
+                        {% if wiki['road_condition'] %}
+                            <div class="wiki-info-item">
+                                <span class="wiki-info-label">🛣️ 路况</span>
+                                <span class="wiki-info-value">{{ wiki['road_condition'][:50] }}{% if wiki['road_condition']|length > 50 %}...{% endif %}</span>
+                            </div>
+                        {% endif %}
+                        {% if wiki['parking_info'] or wiki['parking_fee'] %}
+                            <div class="wiki-info-item">
+                                <span class="wiki-info-label">🅿️ 停车</span>
+                                <span class="wiki-info-value">
+                                    {% if wiki['parking_info'] %}{{ wiki['parking_info'][:40] }}{% endif %}
+                                    {% if wiki['parking_fee'] %} ({{ wiki['parking_fee'][:20] }}){% endif %}
+                                </span>
+                            </div>
+                        {% endif %}
+                        {% if wiki['best_time'] %}
+                            <div class="wiki-info-item">
+                                <span class="wiki-info-label">⏰ 最佳时段</span>
+                                <span class="wiki-info-value">{{ wiki['best_time'][:50] }}</span>
+                            </div>
+                        {% endif %}
+                        {% if wiki['water_features'] %}
+                            <div class="wiki-info-item">
+                                <span class="wiki-info-label">💧 水情</span>
+                                <span class="wiki-info-value">{{ wiki['water_features'][:50] }}</span>
+                            </div>
+                        {% endif %}
+                        {% if wiki['fishing_fee'] %}
+                            <div class="wiki-info-item">
+                                <span class="wiki-info-label">💵 收费</span>
+                                <span class="wiki-info-value">{{ wiki['fishing_fee'][:50] }}</span>
+                            </div>
+                        {% endif %}
+                        {% if wiki['suitable_methods'] %}
+                            <div class="wiki-info-item">
+                                <span class="wiki-info-label">🎣 适合钓法</span>
+                                <span class="wiki-info-value">{{ wiki['suitable_methods'][:50] }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    {% if wiki['tips'] %}
+                        <div class="wiki-tips-preview">
+                            <strong>💡 小贴士：</strong>{{ wiki['tips'][:80] }}{% if wiki['tips']|length > 80 %}...{% endif %}
+                        </div>
+                    {% endif %}
+
+                    <div class="wiki-card-footer">
+                        <a href="{{ url_for('wiki_detail', wiki_id=wiki['id']) }}" class="btn btn-small">查看详情</a>
+                        <a href="{{ url_for('wiki_edit', wiki_id=wiki['id']) }}" class="btn btn-small">编辑</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>还没有钓点百科信息，快去添加第一个吧！</p>
+            <p style="font-size: 13px; opacity: 0.7; margin-top: 8px;">沉淀路况、停车、收费、禁钓等长期信息，方便每次出钓前快速查阅</p>
+            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
+                <a href="{{ url_for('wiki_add') }}" class="btn btn-primary">+ 手动新增</a>
+                <a href="{{ url_for('spots_list') }}" class="btn btn-secondary">🔗 从钓点管理导入</a>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

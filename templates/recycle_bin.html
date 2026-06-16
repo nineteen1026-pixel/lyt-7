@@ -23,6 +23,9 @@
         <a href="{{ url_for('recycle_bin', tab='equipments') }}" class="recycle-tab {% if tab == 'equipments' %}active{% endif %}">
             🎒 装备 <span class="tab-count">{{ counts.equipments }}</span>
         </a>
+        <a href="{{ url_for('recycle_bin', tab='wiki') }}" class="recycle-tab {% if tab == 'wiki' %}active{% endif %}">
+            📚 钓点百科 <span class="tab-count">{{ counts.wiki }}</span>
+        </a>
     </div>
 
     {% if items %}
@@ -196,6 +199,37 @@
                                 <button type="submit" class="btn btn-success btn-small">恢复</button>
                             </form>
                             <form method="POST" action="{{ url_for('permanent_delete_item', item_type='equipments', item_id=item['id']) }}" class="inline-form" onsubmit="return confirm('确定要彻底删除此装备吗？此操作无法撤销！')">
+                                <button type="submit" class="btn btn-danger btn-small">彻底删除</button>
+                            </form>
+                        </div>
+                    </div>
+                {% endfor %}
+
+            {% elif tab == 'wiki' %}
+                {% for item in items %}
+                    <div class="recycle-card">
+                        <label class="item-checkbox">
+                            <input type="checkbox" class="item-checkbox-input" value="{{ item['id'] }}">
+                        </label>
+                        <div class="recycle-card-body">
+                            <div class="recycle-card-header">
+                                <span class="recycle-spot">📚 {{ item['spot_name'] }}</span>
+                            </div>
+                            <div class="recycle-card-meta">
+                                {% if item['road_condition'] %}<span class="meta-tag">🛣️ 路况</span>{% endif %}
+                                {% if item['parking_info'] %}<span class="meta-tag">🅿️ 停车</span>{% endif %}
+                                {% if item['ban_info'] %}<span class="meta-tag harvest-tag">🚫 有禁钓规定</span>{% endif %}
+                                {% if item['fishing_fee'] %}<span class="meta-tag">💰 {{ item['fishing_fee'][:20] }}</span>{% endif %}
+                            </div>
+                            <div class="recycle-card-deleted">
+                                删除时间：{{ item['deleted_at'] }}
+                            </div>
+                        </div>
+                        <div class="recycle-card-actions">
+                            <form method="POST" action="{{ url_for('restore_item', item_type='wiki', item_id=item['id']) }}" class="inline-form">
+                                <button type="submit" class="btn btn-success btn-small">恢复</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('permanent_delete_item', item_type='wiki', item_id=item['id']) }}" class="inline-form" onsubmit="return confirm('确定要彻底删除此钓点百科吗？此操作无法撤销！')">
                                 <button type="submit" class="btn btn-danger btn-small">彻底删除</button>
                             </form>
                         </div>

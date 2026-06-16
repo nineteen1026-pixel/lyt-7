@@ -1,0 +1,251 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ wiki['spot_name'] }} - 钓点百科{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+            <h2 style="margin: 0;">📚 {{ wiki['spot_name'] }}</h2>
+            <div class="wiki-tags">
+                {% if wiki['ban_info'] %}
+                    <span class="wiki-tag tag-warn large">⚠️ 有禁钓规定</span>
+                {% else %}
+                    <span class="wiki-tag tag-ok large">✅ 无禁钓记录</span>
+                {% endif %}
+            </div>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('wiki_edit', wiki_id=wiki['id']) }}" class="btn btn-secondary">✏️ 编辑百科</a>
+            <form method="POST" action="{{ url_for('wiki_delete', wiki_id=wiki['id']) }}"
+                  onsubmit="return confirm('确定要删除此钓点百科吗？将移入回收站。');"
+                  style="display: inline;">
+                <button type="submit" class="btn btn-danger">🗑️ 删除</button>
+            </form>
+            <a href="{{ url_for('wiki_list') }}" class="btn btn-secondary">← 返回列表</a>
+        </div>
+    </div>
+
+    <div class="summary-card">
+        <div class="summary-title">📊 百科概览</div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-icon">📍</div>
+                <div class="summary-content">
+                    <div class="summary-label">累计到访</div>
+                    <div class="summary-value">{{ wiki['visit_count'] or 0 }} 次垂钓记录</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">💵</div>
+                <div class="summary-content">
+                    <div class="summary-label">垂钓收费</div>
+                    <div class="summary-value">{{ wiki['fishing_fee'] or '未知' }}</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">🅿️</div>
+                <div class="summary-content">
+                    <div class="summary-label">停车</div>
+                    <div class="summary-value">
+                        {% if wiki['parking_fee'] %}{{ wiki['parking_fee'] }}{% elif wiki['parking_info'] %}有停车{% else %}未知{% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if related_spot %}
+        <div class="detail-card" style="margin-bottom: 25px;">
+            <div class="detail-section" style="margin-top: 0; padding-top: 0; border-top: none;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                    <h3 style="margin: 0;">🔗 关联钓点档案</h3>
+                    <a href="{{ url_for('spot_detail', spot_id=related_spot['id']) }}" class="btn btn-small">查看钓点详情 →</a>
+                </div>
+                <div class="detail-grid">
+                    {% if related_spot['address'] %}
+                        <div class="detail-item">
+                            <div class="detail-label">🏠 地址</div>
+                            <div class="detail-value">{{ related_spot['address'] }}</div>
+                        </div>
+                    {% endif %}
+                    {% if related_spot['latitude'] and related_spot['longitude'] %}
+                        <div class="detail-item">
+                            <div class="detail-label">📌 坐标</div>
+                            <div class="detail-value">
+                                {{ '%.6f'|format(related_spot['latitude']) }}, {{ '%.6f'|format(related_spot['longitude']) }}
+                            </div>
+                        </div>
+                    {% endif %}
+                    <div class="detail-item">
+                        <div class="detail-label">⭐ 收藏状态</div>
+                        <div class="detail-value">{{ '已收藏' if related_spot['is_favorite'] else '未收藏' }}</div>
+                    </div>
+                </div>
+                {% if related_spot['description'] %}
+                    <div class="detail-text" style="margin-top: 10px;">{{ related_spot['description'] }}</div>
+                {% endif %}
+            </div>
+        </div>
+    {% else %}
+        <div class="info-box">
+            <p>💡 此百科尚未关联钓点档案。建议在编辑时选择对应的钓点，或
+                <a href="{{ url_for('wiki_import_spot', spot_name=wiki['spot_name']|urlencode) }}">点击此处导入并关联</a>
+            </p>
+        </div>
+    {% endif %}
+
+    <div class="detail-card">
+        <div class="detail-header" style="display: block; padding-bottom: 15px;">
+            <h3 style="margin-bottom: 15px;">🛣️ 交通与停车</h3>
+            <div class="detail-grid">
+                <div class="detail-item wiki-detail-item {% if wiki['road_condition'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">路况信息</div>
+                    <div class="detail-value">
+                        {{ wiki['road_condition'] or '<span class="placeholder-text">暂未填写，了解路况信息请补充</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['parking_info'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">🅿️ 停车位置</div>
+                    <div class="detail-value">
+                        {{ wiki['parking_info'] or '<span class="placeholder-text">暂未填写</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['parking_fee'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">💵 停车费用</div>
+                    <div class="detail-value">
+                        {{ wiki['parking_fee'] or '<span class="placeholder-text">暂未填写</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['facilities'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">🏪 周边设施</div>
+                    <div class="detail-value">
+                        {{ wiki['facilities'] or '<span class="placeholder-text">暂未填写（厕所、商店、餐饮等）</span>'|safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>💰 收费与禁钓</h3>
+            <div class="detail-grid">
+                <div class="detail-item wiki-detail-item {% if wiki['fishing_fee'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">垂钓收费</div>
+                    <div class="detail-value">
+                        {{ wiki['fishing_fee'] or '<span class="placeholder-text">暂未填写（收费标准、是否可讲价等）</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['ban_info'] %}has-content warn-content{% else %}empty{% endif %}">
+                    <div class="detail-label">🚫 禁钓规定</div>
+                    <div class="detail-value">
+                        {{ wiki['ban_info'] or '<span class="placeholder-text">暂未发现禁钓规定，请遵守当地法规</span>'|safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="detail-section">
+            <h3>🎣 钓点信息</h3>
+            <div class="detail-grid">
+                <div class="detail-item wiki-detail-item {% if wiki['best_time'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">⏰ 最佳时段</div>
+                    <div class="detail-value">
+                        {{ wiki['best_time'] or '<span class="placeholder-text">暂未填写（最佳季节、时间段等）</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['water_features'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">💧 水情特征</div>
+                    <div class="detail-value">
+                        {{ wiki['water_features'] or '<span class="placeholder-text">暂未填写（水深、水质、水流等）</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['suitable_methods'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">适合钓法</div>
+                    <div class="detail-value">
+                        {{ wiki['suitable_methods'] or '<span class="placeholder-text">暂未填写（台钓、路亚、筏钓等）</span>'|safe }}
+                    </div>
+                </div>
+                <div class="detail-item wiki-detail-item {% if wiki['safety_notes'] %}has-content{% else %}empty{% endif %}">
+                    <div class="detail-label">⚠️ 安全注意</div>
+                    <div class="detail-value">
+                        {{ wiki['safety_notes'] or '<span class="placeholder-text">暂未填写，垂钓请注意安全</span>'|safe }}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if wiki['tips'] %}
+            <div class="detail-section">
+                <h3>💡 经验技巧</h3>
+                <div class="tips-box">
+                    {{ wiki['tips'] }}
+                </div>
+            </div>
+        {% endif %}
+
+        <div class="detail-section">
+            <h3>📋 信息来源</h3>
+            <div class="detail-grid">
+                <div class="detail-item wiki-detail-item has-content">
+                    <div class="detail-label">信息来源</div>
+                    <div class="detail-value">{{ wiki['source'] or '自行整理' }}</div>
+                </div>
+                <div class="detail-item wiki-detail-item has-content">
+                    <div class="detail-label">核实日期</div>
+                    <div class="detail-value">{{ wiki['info_date'][:10] if wiki['info_date'] else '暂未核实' }}</div>
+                </div>
+                <div class="detail-item wiki-detail-item has-content">
+                    <div class="detail-label">创建时间</div>
+                    <div class="detail-value">{{ wiki['created_at'][:16].replace('T', ' ') if wiki['created_at'] else '未知' }}</div>
+                </div>
+                <div class="detail-item wiki-detail-item has-content">
+                    <div class="detail-label">更新时间</div>
+                    <div class="detail-value">{{ wiki['updated_at'][:16].replace('T', ' ') if wiki['updated_at'] else '未知' }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if related_logs %}
+        <div class="detail-section" style="margin-top: 25px;">
+            <div class="detail-section-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="margin: 0;">📋 相关垂钓记录（最近 10 条）</h3>
+                <a href="{{ url_for('by_spot', spot=wiki['spot_name']|urlencode) }}" class="btn btn-small">查看全部 →</a>
+            </div>
+            <div class="log-list">
+                {% for log in related_logs %}
+                    <div class="log-card">
+                        <div class="log-header">
+                            <span class="log-date">📅 {{ log['created_at'] }}</span>
+                            <span class="log-spot">🎣 {{ wiki['spot_name'] }}</span>
+                        </div>
+                        <div class="log-body">
+                            <div class="log-row">
+                                <span class="label">天气：</span>
+                                <span>{{ log['weather'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">水位：</span>
+                                <span>{{ log['water_level'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">饵料：</span>
+                                <span>{{ log['bait'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">鱼种：</span>
+                                <span>{{ log['fish_species'] }}</span>
+                            </div>
+                            <div class="log-row">
+                                <span class="label">收获：</span>
+                                <span class="harvest">{{ log['harvest'] }}</span>
+                            </div>
+                        </div>
+                        <div class="log-footer">
+                            <a href="{{ url_for('log_detail', log_id=log['id']) }}" class="btn btn-small">查看记录详情</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}

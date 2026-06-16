@@ -1,0 +1,152 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if wiki %}编辑钓点百科{% else %}新增钓点百科{% endif %} - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>{% if wiki %}✏️ 编辑钓点百科{% else %}➕ 新增钓点百科{% endif %}</h2>
+        <a href="{{ url_for('wiki_list') }}" class="btn btn-secondary">← 返回列表</a>
+    </div>
+
+    <div class="form-card">
+        <form method="POST" action="{% if wiki %}{{ url_for('wiki_edit', wiki_id=wiki['id']) }}{% else %}{{ url_for('wiki_add') }}{% endif %}"
+              class="wiki-form">
+
+            <div class="form-section">
+                <div class="form-section-title">📝 基本信息</div>
+
+                <div class="form-row">
+                    <label for="spot_id" class="form-label">关联钓点（可选）</label>
+                    <select id="spot_id" name="spot_id" class="form-input">
+                        <option value="">-- 不关联（独立百科） --</option>
+                        {% for s in spot_options %}
+                            <option value="{{ s['id'] }}"
+                                    {% if (wiki and wiki['spot_id'] == s['id']) or (not wiki and spot_name == s['name']) %}selected{% endif %}>
+                                {{ s['name'] }}{% if s['address'] %} ({{ s['address'] }}){% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                    <small class="form-hint">选择钓点档案可快速获取坐标和基础信息</small>
+                </div>
+
+                <div class="form-row">
+                    <label for="spot_name" class="form-label required">钓点名称 *</label>
+                    <input type="text" id="spot_name" name="spot_name" required
+                           value="{{ wiki['spot_name'] if wiki else spot_name }}"
+                           placeholder="如：城北水库西岸" class="form-input">
+                </div>
+
+                <div class="form-row">
+                    <label for="source" class="form-label">信息来源</label>
+                    <input type="text" id="source" name="source"
+                           value="{{ wiki['source'] if wiki else '自行整理' }}"
+                           placeholder="如：朋友介绍、官方公示、实地考察" class="form-input">
+                </div>
+
+                <div class="form-row">
+                    <label for="info_date" class="form-label">核实日期</label>
+                    <input type="date" id="info_date" name="info_date"
+                           value="{{ (wiki['info_date'][:10] if wiki['info_date'] else '') if wiki else '' }}"
+                           class="form-input">
+                    <small class="form-hint">信息核实的日期，用于判断信息时效性</small>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">🛣️ 交通与停车</div>
+
+                <div class="form-row">
+                    <label for="road_condition" class="form-label">路况信息</label>
+                    <textarea id="road_condition" name="road_condition" rows="3"
+                              placeholder="如：全程水泥路，小车可达；最后500米土路，建议SUV..."
+                              class="form-input textarea">{{ wiki['road_condition'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="parking_info" class="form-label">🅿️ 停车位置/情况</label>
+                    <textarea id="parking_info" name="parking_info" rows="3"
+                              placeholder="如：水库大坝旁免费停车场，约20个车位；或路边可停..."
+                              class="form-input textarea">{{ wiki['parking_info'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="parking_fee" class="form-label">💵 停车费用</label>
+                    <input type="text" id="parking_fee" name="parking_fee"
+                           value="{{ wiki['parking_fee'] if wiki else '' }}"
+                           placeholder="如：免费、5元/次、20元/天..."
+                           class="form-input">
+                </div>
+
+                <div class="form-row">
+                    <label for="facilities" class="form-label">🏪 周边设施</label>
+                    <textarea id="facilities" name="facilities" rows="3"
+                              placeholder="如：有公共厕所、无商店、入口有卖水的、无餐饮..."
+                              class="form-input textarea">{{ wiki['facilities'] if wiki else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">💰 费用与规定</div>
+
+                <div class="form-row">
+                    <label for="fishing_fee" class="form-label">垂钓收费</label>
+                    <textarea id="fishing_fee" name="fishing_fee" rows="3"
+                              placeholder="如：免费野钓、50元/天、半天30、会员制..."
+                              class="form-input textarea">{{ wiki['fishing_fee'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="ban_info" class="form-label">🚫 禁钓规定 / 注意事项</label>
+                    <textarea id="ban_info" name="ban_info" rows="4"
+                              placeholder="如：每年3-6月禁渔期禁止垂钓；禁止路亚；禁止使用有毒饵料..."
+                              class="form-input textarea warn">{{ wiki['ban_info'] if wiki else '' }}</textarea>
+                    <small class="form-hint warn-hint">⚠️ 请务必如实填写，遵守当地规定，安全垂钓</small>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <div class="form-section-title">🎣 钓点信息</div>
+
+                <div class="form-row">
+                    <label for="best_time" class="form-label">⏰ 最佳作钓时间</label>
+                    <textarea id="best_time" name="best_time" rows="3"
+                              placeholder="如：春秋季最佳、清晨5-8点、傍晚17-19点..."
+                              class="form-input textarea">{{ wiki['best_time'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="water_features" class="form-label">💧 水情特征</label>
+                    <textarea id="water_features" name="water_features" rows="3"
+                              placeholder="如：平均水深3米，有深浅交接；水质清澈，能见度1米..."
+                              class="form-input textarea">{{ wiki['water_features'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="suitable_methods" class="form-label">适合钓法</label>
+                    <textarea id="suitable_methods" name="suitable_methods" rows="3"
+                              placeholder="如：台钓、路亚、筏钓、长竿短线、矶钓..."
+                              class="form-input textarea">{{ wiki['suitable_methods'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="safety_notes" class="form-label">⚠️ 安全注意</label>
+                    <textarea id="safety_notes" name="safety_notes" rows="3"
+                              placeholder="如：岸边湿滑注意防滑；水深危险；有高压线注意安全..."
+                              class="form-input textarea warn">{{ wiki['safety_notes'] if wiki else '' }}</textarea>
+                </div>
+
+                <div class="form-row">
+                    <label for="tips" class="form-label">💡 经验技巧</label>
+                    <textarea id="tips" name="tips" rows="5"
+                              placeholder="在此记录作钓心得、用饵建议、常出鱼种、选位经验等..."
+                              class="form-input textarea">{{ wiki['tips'] if wiki else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">💾 {% if wiki %}保存修改{% else %}创建百科{% endif %}</button>
+                <a href="{{ url_for('wiki_list') }}" class="btn btn-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+{% endblock %}

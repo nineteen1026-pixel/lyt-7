@@ -214,6 +214,31 @@ def init_db():
         )
     ''')
 
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS spot_wiki (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            spot_id INTEGER,
+            spot_name TEXT NOT NULL,
+            road_condition TEXT,
+            parking_info TEXT,
+            parking_fee TEXT,
+            fishing_fee TEXT,
+            ban_info TEXT,
+            best_time TEXT,
+            water_features TEXT,
+            suitable_methods TEXT,
+            facilities TEXT,
+            safety_notes TEXT,
+            tips TEXT,
+            source TEXT,
+            info_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            deleted_at TIMESTAMP,
+            FOREIGN KEY (spot_id) REFERENCES fishing_spots(id) ON DELETE SET NULL
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -2631,7 +2656,7 @@ def heatmap_data():
 @app.route('/recycle-bin')
 def recycle_bin():
     tab = request.args.get('tab', 'logs')
-    valid_tabs = ['logs', 'spots', 'baits', 'invitations', 'equipments']
+    valid_tabs = ['logs', 'spots', 'baits', 'invitations', 'equipments', 'wiki']
     if tab not in valid_tabs:
         tab = 'logs'
 
@@ -2642,6 +2667,7 @@ def recycle_bin():
     bait_count = conn.execute('SELECT COUNT(*) FROM baits WHERE deleted_at IS NOT NULL').fetchone()[0]
     inv_count = conn.execute('SELECT COUNT(*) FROM fishing_invitations WHERE deleted_at IS NOT NULL').fetchone()[0]
     eq_count = conn.execute('SELECT COUNT(*) FROM equipments WHERE deleted_at IS NOT NULL').fetchone()[0]
+    wiki_count = conn.execute('SELECT COUNT(*) FROM spot_wiki WHERE deleted_at IS NOT NULL').fetchone()[0]
 
     items = []
     if tab == 'logs':
@@ -2679,6 +2705,13 @@ def recycle_bin():
             WHERE deleted_at IS NOT NULL
             ORDER BY deleted_at DESC
         ''').fetchall()
+    elif tab == 'wiki':
+        items = conn.execute('''
+            SELECT id, spot_name, best_time, source, info_date, deleted_at
+            FROM spot_wiki
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ''').fetchall()
 
     conn.close()
     return render_template(
@@ -2690,7 +2723,8 @@ def recycle_bin():
             'spots': spot_count,
             'baits': bait_count,
             'invitations': inv_count,
-            'equipments': eq_count
+            'equipments': eq_count,
+            'wiki': wiki_count
         }
     )
 
@@ -2702,7 +2736,8 @@ def restore_item(item_type, item_id):
         'spots': 'fishing_spots',
         'baits': 'baits',
         'invitations': 'fishing_invitations',
-        'equipments': 'equipments'
+        'equipments': 'equipments',
+        'wiki': 'spot_wiki'
     }
     if item_type not in valid_types:
         flash('无效的类型！', 'error')
@@ -2724,7 +2759,8 @@ def permanent_delete_item(item_type, item_id):
         'spots': 'fishing_spots',
         'baits': 'baits',
         'invitations': 'fishing_invitations',
-        'equipments': 'equipments'
+        'equipments': 'equipments',
+        'wiki': 'spot_wiki'
     }
     if item_type not in valid_types:
         flash('无效的类型！', 'error')
@@ -2749,7 +2785,8 @@ def batch_restore():
         'spots': 'fishing_spots',
         'baits': 'baits',
         'invitations': 'fishing_invitations',
-        'equipments': 'equipments'
+        'equipments': 'equipments',
+        'wiki': 'spot_wiki'
     }
     if item_type not in valid_types or not ids:
         flash('请先选择要恢复的项目！', 'error')
@@ -2775,7 +2812,8 @@ def batch_permanent_delete():
         'spots': 'fishing_spots',
         'baits': 'baits',
         'invitations': 'fishing_invitations',
-        'equipments': 'equipments'
+        'equipments': 'equipments',
+        'wiki': 'spot_wiki'
     }
     if item_type not in valid_types or not ids:
         flash('请先选择要彻底删除的项目！', 'error')
@@ -3732,6 +3770,289 @@ def compare_results(log_id1, log_id2):
         conclusions=conclusions,
         other_fields=other_fields
     )
+
+
+@app.route('/wiki')
+def wiki_list():
+    conn = get_db()
+    sort_by = request.args.get('sort', 'recent')
+    keyword = request.args.get('q', '').strip()
+    has_ban_filter = request.args.get('ban', None)
+    has_fee_filter = request.args.get('fee', None)
+
+    query = '''
+        SELECT w.*,
+               (SELECT COUNT(*) FROM fishing_logs l WHERE l.spot = w.spot_name AND l.deleted_at IS NULL) as visit_count
+        FROM spot_wiki w
+        WHERE w.deleted_at IS NULL
+    '''
+    params = []
+    conditions = []
+
+    if keyword:
+        conditions.append('(w.spot_name LIKE ? OR w.road_condition LIKE ? OR w.parking_info LIKE ? OR w.ban_info LIKE ? OR w.tips LIKE ?)')
+        like = f'%{keyword}%'
+        params.extend([like, like, like, like, like])
+
+    if has_ban_filter == 'yes':
+        conditions.append('w.ban_info IS NOT NULL AND w.ban_info != ""')
+    elif has_ban_filter == 'no':
+        conditions.append('(w.ban_info IS NULL OR w.ban_info = "")')
+
+    if has_fee_filter == 'free':
+        conditions.append('(w.fishing_fee LIKE ? OR w.fishing_fee IS NULL OR w.fishing_fee = "")')
+        params.append('%免费%')
+    elif has_fee_filter == 'paid':
+        conditions.append('w.fishing_fee IS NOT NULL AND w.fishing_fee != "" AND w.fishing_fee NOT LIKE ?')
+        params.append('%免费%')
+
+    if conditions:
+        query += ' AND ' + ' AND '.join(conditions)
+
+    if sort_by == 'name':
+        query += ' ORDER BY w.spot_name'
+    elif sort_by == 'visit':
+        query += ' ORDER BY visit_count DESC'
+    elif sort_by == 'info_date':
+        query += ' ORDER BY w.info_date DESC NULLS LAST'
+    else:
+        query += ' ORDER BY w.updated_at DESC, w.created_at DESC'
+
+    wikis = conn.execute(query, params).fetchall()
+    wiki_list_data = [dict(w) for w in wikis]
+
+    stats = conn.execute('''
+        SELECT
+            COUNT(*) as total,
+            SUM(CASE WHEN ban_info IS NOT NULL AND ban_info != '' THEN 1 ELSE 0 END) as ban_count,
+            SUM(CASE WHEN fishing_fee IS NOT NULL AND fishing_fee != '' AND fishing_fee NOT LIKE '%免费%' THEN 1 ELSE 0 END) as paid_count
+        FROM spot_wiki WHERE deleted_at IS NULL
+    ''').fetchone()
+
+    conn.close()
+    return render_template(
+        'spot_wiki_list.html',
+        wikis=wiki_list_data,
+        sort_by=sort_by,
+        keyword=keyword,
+        has_ban_filter=has_ban_filter,
+        has_fee_filter=has_fee_filter,
+        total=stats['total'] or 0,
+        ban_count=stats['ban_count'] or 0,
+        paid_count=stats['paid_count'] or 0
+    )
+
+
+def get_wiki_spot_options(conn):
+    spots = conn.execute('''
+        SELECT id, name FROM fishing_spots WHERE deleted_at IS NULL ORDER BY name
+    ''').fetchall()
+    return [dict(s) for s in spots]
+
+
+@app.route('/wiki/add', methods=['GET', 'POST'])
+def wiki_add():
+    conn = get_db()
+    spot_options = get_wiki_spot_options(conn)
+
+    if request.method == 'POST':
+        spot_id = request.form.get('spot_id', '').strip()
+        spot_name = request.form['spot_name'].strip()
+        road_condition = request.form.get('road_condition', '').strip()
+        parking_info = request.form.get('parking_info', '').strip()
+        parking_fee = request.form.get('parking_fee', '').strip()
+        fishing_fee = request.form.get('fishing_fee', '').strip()
+        ban_info = request.form.get('ban_info', '').strip()
+        best_time = request.form.get('best_time', '').strip()
+        water_features = request.form.get('water_features', '').strip()
+        suitable_methods = request.form.get('suitable_methods', '').strip()
+        facilities = request.form.get('facilities', '').strip()
+        safety_notes = request.form.get('safety_notes', '').strip()
+        tips = request.form.get('tips', '').strip()
+        source = request.form.get('source', '').strip()
+        info_date = request.form.get('info_date', '').strip()
+
+        if not spot_name:
+            flash('请填写钓点名称！', 'error')
+        else:
+            try:
+                sid = int(spot_id) if spot_id else None
+                cursor = conn.execute('''
+                    INSERT INTO spot_wiki (
+                        spot_id, spot_name, road_condition, parking_info, parking_fee,
+                        fishing_fee, ban_info, best_time, water_features, suitable_methods,
+                        facilities, safety_notes, tips, source, info_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    sid, spot_name,
+                    road_condition or None, parking_info or None, parking_fee or None,
+                    fishing_fee or None, ban_info or None, best_time or None,
+                    water_features or None, suitable_methods or None,
+                    facilities or None, safety_notes or None, tips or None,
+                    source or None, info_date or None
+                ))
+                conn.commit()
+                flash('钓点百科添加成功！', 'success')
+                conn.close()
+                return redirect(url_for('wiki_detail', wiki_id=cursor.lastrowid))
+            except Exception as e:
+                flash(f'添加失败：{str(e)}', 'error')
+
+    conn.close()
+    return render_template('spot_wiki_form.html', wiki=None, spot_options=spot_options)
+
+
+@app.route('/wiki/<int:wiki_id>')
+def wiki_detail(wiki_id):
+    conn = get_db()
+    wiki = conn.execute('SELECT * FROM spot_wiki WHERE id = ? AND deleted_at IS NULL', (wiki_id,)).fetchone()
+    if wiki is None:
+        conn.close()
+        flash('钓点百科不存在！', 'error')
+        return redirect(url_for('wiki_list'))
+
+    wiki_dict = dict(wiki)
+
+    visit_count = conn.execute('''
+        SELECT COUNT(*) as cnt FROM fishing_logs
+        WHERE spot = ? AND deleted_at IS NULL
+    ''', (wiki_dict['spot_name'],)).fetchone()['cnt']
+    wiki_dict['visit_count'] = visit_count
+
+    related_spot = None
+    if wiki_dict['spot_id']:
+        related_spot = conn.execute('''
+            SELECT id, name, is_favorite, latitude, longitude, address, description
+            FROM fishing_spots WHERE id = ? AND deleted_at IS NULL
+        ''', (wiki_dict['spot_id'],)).fetchone()
+
+    related_logs = conn.execute('''
+        SELECT id, created_at, weather, water_level, bait, fish_species, harvest
+        FROM fishing_logs
+        WHERE spot = ? AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 10
+    ''', (wiki_dict['spot_name'],)).fetchall()
+
+    conn.close()
+    return render_template(
+        'spot_wiki_detail.html',
+        wiki=wiki_dict,
+        related_spot=dict(related_spot) if related_spot else None,
+        related_logs=[dict(l) for l in related_logs]
+    )
+
+
+@app.route('/wiki/<int:wiki_id>/edit', methods=['GET', 'POST'])
+def wiki_edit(wiki_id):
+    conn = get_db()
+    wiki = conn.execute('SELECT * FROM spot_wiki WHERE id = ? AND deleted_at IS NULL', (wiki_id,)).fetchone()
+    spot_options = get_wiki_spot_options(conn)
+
+    if wiki is None:
+        conn.close()
+        flash('钓点百科不存在！', 'error')
+        return redirect(url_for('wiki_list'))
+
+    if request.method == 'POST':
+        spot_id = request.form.get('spot_id', '').strip()
+        spot_name = request.form['spot_name'].strip()
+        road_condition = request.form.get('road_condition', '').strip()
+        parking_info = request.form.get('parking_info', '').strip()
+        parking_fee = request.form.get('parking_fee', '').strip()
+        fishing_fee = request.form.get('fishing_fee', '').strip()
+        ban_info = request.form.get('ban_info', '').strip()
+        best_time = request.form.get('best_time', '').strip()
+        water_features = request.form.get('water_features', '').strip()
+        suitable_methods = request.form.get('suitable_methods', '').strip()
+        facilities = request.form.get('facilities', '').strip()
+        safety_notes = request.form.get('safety_notes', '').strip()
+        tips = request.form.get('tips', '').strip()
+        source = request.form.get('source', '').strip()
+        info_date = request.form.get('info_date', '').strip()
+
+        if not spot_name:
+            flash('请填写钓点名称！', 'error')
+        else:
+            try:
+                sid = int(spot_id) if spot_id else None
+                conn.execute('''
+                    UPDATE spot_wiki SET
+                        spot_id = ?, spot_name = ?, road_condition = ?,
+                        parking_info = ?, parking_fee = ?, fishing_fee = ?,
+                        ban_info = ?, best_time = ?, water_features = ?,
+                        suitable_methods = ?, facilities = ?, safety_notes = ?,
+                        tips = ?, source = ?, info_date = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                ''', (
+                    sid, spot_name,
+                    road_condition or None, parking_info or None, parking_fee or None,
+                    fishing_fee or None, ban_info or None, best_time or None,
+                    water_features or None, suitable_methods or None,
+                    facilities or None, safety_notes or None, tips or None,
+                    source or None, info_date or None, wiki_id
+                ))
+                conn.commit()
+                flash('钓点百科更新成功！', 'success')
+                conn.close()
+                return redirect(url_for('wiki_detail', wiki_id=wiki_id))
+            except Exception as e:
+                flash(f'更新失败：{str(e)}', 'error')
+
+    conn.close()
+    return render_template('spot_wiki_form.html', wiki=dict(wiki), spot_options=spot_options)
+
+
+@app.route('/wiki/<int:wiki_id>/delete', methods=['POST'])
+def wiki_delete(wiki_id):
+    conn = get_db()
+    wiki = conn.execute('SELECT id FROM spot_wiki WHERE id = ? AND deleted_at IS NULL', (wiki_id,)).fetchone()
+    if wiki is None:
+        conn.close()
+        flash('钓点百科不存在！', 'error')
+        return redirect(url_for('wiki_list'))
+
+    conn.execute('UPDATE spot_wiki SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (wiki_id,))
+    conn.commit()
+    conn.close()
+    flash('钓点百科已移入回收站！', 'success')
+    return redirect(url_for('wiki_list'))
+
+
+@app.route('/wiki/import/<spot_name>')
+def wiki_import_spot(spot_name):
+    conn = get_db()
+    spot_name_decoded = urllib.parse.unquote(spot_name)
+
+    existing = conn.execute('''
+        SELECT id FROM spot_wiki WHERE spot_name = ? AND deleted_at IS NULL
+    ''', (spot_name_decoded,)).fetchone()
+
+    if existing:
+        conn.close()
+        flash('该钓点百科已存在！', 'error')
+        return redirect(url_for('wiki_detail', wiki_id=existing['id']))
+
+    spot_info = conn.execute('''
+        SELECT id, name, description, address FROM fishing_spots
+        WHERE name = ? AND deleted_at IS NULL
+    ''', (spot_name_decoded,)).fetchone()
+
+    sid = None
+    desc = None
+    if spot_info:
+        sid = spot_info['id']
+        desc = spot_info['description']
+
+    cursor = conn.execute('''
+        INSERT INTO spot_wiki (spot_id, spot_name, tips, info_date)
+        VALUES (?, ?, ?, ?)
+    ''', (sid, spot_name_decoded, desc or None, datetime.now().strftime('%Y-%m-%d')))
+
+    conn.commit()
+    conn.close()
+    flash('已从钓点管理导入，快去完善信息吧！', 'success')
+    return redirect(url_for('wiki_edit', wiki_id=cursor.lastrowid))
 
 
 if __name__ == '__main__':
