@@ -20,6 +20,9 @@
         <a href="{{ url_for('recycle_bin', tab='invitations') }}" class="recycle-tab {% if tab == 'invitations' %}active{% endif %}">
             🤝 邀约 <span class="tab-count">{{ counts.invitations }}</span>
         </a>
+        <a href="{{ url_for('recycle_bin', tab='equipments') }}" class="recycle-tab {% if tab == 'equipments' %}active{% endif %}">
+            🎒 装备 <span class="tab-count">{{ counts.equipments }}</span>
+        </a>
     </div>
 
     {% if items %}
@@ -162,6 +165,37 @@
                                 <button type="submit" class="btn btn-success btn-small">恢复</button>
                             </form>
                             <form method="POST" action="{{ url_for('permanent_delete_item', item_type='invitations', item_id=item['id']) }}" class="inline-form" onsubmit="return confirm('确定要彻底删除此邀约吗？此操作无法撤销！')">
+                                <button type="submit" class="btn btn-danger btn-small">彻底删除</button>
+                            </form>
+                        </div>
+                    </div>
+                {% endfor %}
+
+            {% elif tab == 'equipments' %}
+                {% for item in items %}
+                    <div class="recycle-card">
+                        <label class="item-checkbox">
+                            <input type="checkbox" class="item-checkbox-input" value="{{ item['id'] }}">
+                        </label>
+                        <div class="recycle-card-body">
+                            <div class="recycle-card-header">
+                                <span class="recycle-spot">🎒 {{ item['name'] }}</span>
+                            </div>
+                            <div class="recycle-card-meta">
+                                {% if item['category'] %}<span class="meta-tag">分类：{{ item['category'] }}</span>{% endif %}
+                                {% if item['brand'] %}<span class="meta-tag">品牌：{{ item['brand'] }}</span>{% endif %}
+                                {% if item['model'] %}<span class="meta-tag">型号：{{ item['model'] }}</span>{% endif %}
+                                {% if item['unit_price'] %}<span class="meta-tag harvest-tag">💰 ¥{{ item['unit_price'] }}</span>{% endif %}
+                            </div>
+                            <div class="recycle-card-deleted">
+                                删除时间：{{ item['deleted_at'] }}
+                            </div>
+                        </div>
+                        <div class="recycle-card-actions">
+                            <form method="POST" action="{{ url_for('restore_item', item_type='equipments', item_id=item['id']) }}" class="inline-form">
+                                <button type="submit" class="btn btn-success btn-small">恢复</button>
+                            </form>
+                            <form method="POST" action="{{ url_for('permanent_delete_item', item_type='equipments', item_id=item['id']) }}" class="inline-form" onsubmit="return confirm('确定要彻底删除此装备吗？此操作无法撤销！')">
                                 <button type="submit" class="btn btn-danger btn-small">彻底删除</button>
                             </form>
                         </div>

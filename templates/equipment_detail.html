@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ equipment['name'] }} - 装备详情{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🎒 {{ equipment['name'] }}</h2>
+        <div class="page-header-actions">
+            <a href="{{ url_for('equipment_transaction', eq_id=equipment['id']) }}" class="btn btn-secondary">📦 出入库</a>
+            <a href="{{ url_for('edit_equipment', eq_id=equipment['id']) }}" class="btn btn-primary">✏️ 编辑</a>
+            <a href="{{ url_for('equipments_list') }}" class="btn btn-secondary">← 返回列表</a>
+        </div>
+    </div>
+
+    <div class="summary-card" style="margin-bottom: 25px;">
+        <div class="summary-title">📊 装备概览</div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-icon">💰</div>
+                <div class="summary-content">
+                    <div class="summary-label">单价</div>
+                    <div class="summary-value">¥ {{ '%.2f'|format(equipment['unit_price'] or 0) }}</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">📦</div>
+                <div class="summary-content">
+                    <div class="summary-label">当前库存</div>
+                    <div class="summary-value">
+                        <strong>{{ equipment['available_quantity'] or 0 }}</strong> / {{ equipment['total_quantity'] or 0 }}
+                    </div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">🔧</div>
+                <div class="summary-content">
+                    <div class="summary-label">累计使用</div>
+                    <div class="summary-value">
+                        {{ equipment['use_count'] or 0 }} 次
+                        {% if equipment['total_usage_cost'] %}
+                            <br><small>消耗 ¥{{ '%.2f'|format(equipment['total_usage_cost']) }}</small>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="detail-card" style="margin-bottom: 25px;">
+        <div class="detail-header">
+            <div class="detail-spot" style="font-size: 16px;">📋 基本信息</div>
+        </div>
+        <div class="detail-grid">
+            <div class="detail-item">
+                <div class="detail-label">分类</div>
+                <div class="detail-value">{{ equipment['category'] }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">品牌</div>
+                <div class="detail-value">{{ equipment['brand'] or '-' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">型号</div>
+                <div class="detail-value">{{ equipment['model'] or '-' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">规格</div>
+                <div class="detail-value">{{ equipment['spec'] or '-' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">购入日期</div>
+                <div class="detail-value">{{ equipment['purchase_date'] or '-' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">供应商</div>
+                <div class="detail-value">{{ equipment['supplier'] or '-' }}</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">预计寿命</div>
+                <div class="detail-value">{{ equipment['lifespan_months'] or '-' }} 个月</div>
+            </div>
+            <div class="detail-item">
+                <div class="detail-label">最近使用</div>
+                <div class="detail-value">{{ equipment['last_used_date'] or '尚未使用' }}</div>
+            </div>
+        </div>
+        {% if equipment['description'] %}
+            <div class="detail-section">
+                <h3>📝 备注说明</h3>
+                <div class="detail-text" style="white-space: pre-wrap;">{{ equipment['description'] }}</div>
+            </div>
+        {% endif %}
+    </div>
+
+    <div class="detail-section" style="margin-top: 30px;">
+        <div class="audit-header">
+            <h3>📦 出入库记录 ({{ transactions|length }})</h3>
+        </div>
+        {% if transactions %}
+            <div class="members-table-wrapper">
+                <table class="members-table ranking-table">
+                    <thead>
+                        <tr>
+                            <th>日期</th>
+                            <th>类型</th>
+                            <th>数量</th>
+                            <th>单价</th>
+                            <th>总金额</th>
+                            <th>原因/备注</th>
+                            <th>关联记录</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for t in transactions %}
+                            <tr>
+                                <td>{{ t['transaction_date'] }}</td>
+                                <td>
+                                    {% if t['type'] == 'in' %}
+                                        <span class="harvest-badge good">📥 入库</span>
+                                    {% elif t['type'] == 'out' %}
+                                        <span class="harvest-badge bad">📤 出库</span>
+                                    {% elif t['type'] == 'adjust' %}
+                                        <span style="background: #ebf8ff; color: #2a4365; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 600;">🔧 调整</span>
+                                    {% elif t['type'] == 'discard' %}
+                                        <span class="harvest-badge bad">🗑️ 报废</span>
+                                    {% endif %}
+                                </td>
+                                <td style="font-weight: 600;">
+                                    {% if t['quantity'] > 0 %}+{% endif %}{{ t['quantity'] }}
+                                </td>
+                                <td>¥{{ '%.2f'|format(t['unit_price'] or 0) }}</td>
+                                <td style="font-weight: 600;">¥{{ '%.2f'|format(t['total_cost'] or 0) }}</td>
+                                <td style="font-size: 13px; color: #718096;">{{ t['reason'] or '-' }}</td>
+                                <td>
+                                    {% if t['related_log_id'] %}
+                                        <a href="{{ url_for('log_detail', log_id=t['related_log_id']) }}" style="color: #667eea;">
+                                            {{ t['related_spot'] or '查看' }}
+                                        </a>
+                                    {% else %}
+                                        -
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-hint">暂无出入库记录</div>
+        {% endif %}
+    </div>
+
+    <div class="detail-section">
+        <div class="audit-header">
+            <h3>🎣 出钓使用记录 ({{ usage_logs|length }})</h3>
+        </div>
+        {% if usage_logs %}
+            <div class="members-table-wrapper">
+                <table class="members-table ranking-table">
+                    <thead>
+                        <tr>
+                            <th>出钓日期</th>
+                            <th>钓点</th>
+                            <th>使用数量</th>
+                            <th>单次消耗</th>
+                            <th>损耗率</th>
+                            <th>收获</th>
+                            <th>备注</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for l in usage_logs %}
+                            <tr>
+                                <td><a href="{{ url_for('log_detail', log_id=l['log_id']) }}" style="color: #667eea;">{{ l['log_date'] }}</a></td>
+                                <td>{{ l['spot'] }}</td>
+                                <td>{{ l['quantity'] }}</td>
+                                <td style="font-weight: 600; color: #e53e3e;">¥{{ '%.2f'|format(l['usage_cost'] or 0) }}</td>
+                                <td>{{ '%.0f'|format((l['wear_rate'] or 0) * 100) }}%</td>
+                                <td class="harvest-text">{{ l['harvest'] or '-' }}</td>
+                                <td style="font-size: 13px; color: #718096;">{{ l['notes'] or '-' }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <div class="empty-hint">该装备尚未在出钓中使用过</div>
+        {% endif %}
+    </div>
+{% endblock %}

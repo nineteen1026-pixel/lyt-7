@@ -154,6 +154,20 @@
                 <label for="next_strategy_date">策略执行日期</label>
                 <input type="date" id="next_strategy_date" name="next_strategy_date" value="{{ log['next_strategy_date'] or '' }}">
             </div>
+
+            <div class="form-group full-width">
+                <div class="equipment-section-header">
+                    <label>🎒 使用装备 <span style="font-weight: 400; font-size: 13px; color: #718096;">（关联装备自动核算单次消耗成本）</span></label>
+                    <button type="button" class="btn btn-small btn-add-equipment" onclick="addEquipmentRow()">+ 添加装备</button>
+                </div>
+                <div id="equipment-list" class="equipment-list">
+                    <div class="equipment-empty-hint" id="equipment-empty-hint">暂无关联装备，点击上方按钮添加</div>
+                </div>
+                <div class="equipment-cost-summary" id="equipment-cost-summary" style="display: none;">
+                    <span>装备消耗总成本：</span>
+                    <strong class="equipment-total-cost" id="equipment-total-cost">¥0.00</strong>
+                </div>
+            </div>
         </div>
 
         <div class="form-actions">
@@ -726,6 +740,124 @@
         syncSpeciesChips();
         syncHarvestChip();
         updateSpotHints(currentSpot);
+    })();
+
+    var equipmentData = {{ equipment_list|tojson }};
+    var logEquipments = {{ log_equipments|tojson }};
+    var equipmentRowCount = 0;
+
+    function calcUsageCost(unitPrice, lifespan, quantity, wearRate) {
+        unitPrice = parseFloat(unitPrice) || 0;
+        lifespan = parseInt(lifespan) || 24;
+        quantity = parseInt(quantity) || 1;
+        wearRate = parseFloat(wearRate) || 0.05;
+        var baseCost = unitPrice / lifespan;
+        var wearCost = unitPrice * wearRate;
+        return ((baseCost + wearCost) * quantity).toFixed(2);
+    }
+
+    function addEquipmentRow(presetData) {
+        equipmentRowCount++;
+        var rowId = 'eq-row-' + equipmentRowCount;
+        var listEl = document.getElementById('equipment-list');
+        var emptyEl = document.getElementById('equipment-empty-hint');
+        if (emptyEl) emptyEl.style.display = 'none';
+        document.getElementById('equipment-cost-summary').style.display = 'flex';
+
+        var eqId = presetData && presetData.equipment_id ? presetData.equipment_id : '';
+        var qty = presetData && presetData.quantity ? presetData.quantity : 1;
+        var wear = presetData && presetData.wear_rate ? presetData.wear_rate : 0.05;
+        var note = presetData && presetData.notes ? presetData.notes : '';
+
+        var options = '<option value="">请选择装备</option>';
+        equipmentData.forEach(function(eq) {
+            options += '<option value="' + eq.id + '" data-price="' + (eq.unit_price || 0) + '" data-lifespan="' + (eq.lifespan_months || 24) + '" data-spec="' + escapeHtml(eq.spec || '') + '" data-available="' + (eq.available_quantity || 0) + '" ' + (eq.id == eqId ? 'selected' : '') + '>' +
+                escapeHtml(eq.name) + ' [' + escapeHtml(eq.category) + ']' + (eq.available_quantity ? ' (库存:' + eq.available_quantity + ')' : '') +
+                '</option>';
+        });
+
+        var rowEl = document.createElement('div');
+        rowEl.className = 'equipment-row';
+        rowEl.id = rowId;
+        rowEl.innerHTML = `
+            <div class="equipment-row-fields">
+                <div class="eq-field eq-field-select">
+                    <select name="equipment_id[]" class="eq-select" onchange="updateEqCost('${rowId}')">
+                        ${options}
+                    </select>
+                </div>
+                <div class="eq-field eq-field-qty">
+                    <input type="number" name="equipment_qty[]" class="eq-qty" min="1" step="1" value="${qty}" placeholder="数量" onchange="updateEqCost('${rowId}')">
+                </div>
+                <div class="eq-field eq-field-wear">
+                    <input type="number" name="equipment_wear[]" class="eq-wear" min="0" max="1" step="0.01" value="${wear}" placeholder="损耗率" onchange="updateEqCost('${rowId}')">
+                </div>
+                <div class="eq-field eq-field-note">
+                    <input type="text" name="equipment_note[]" class="eq-note" value="${escapeHtml(note)}" placeholder="备注">
+                </div>
+                <div class="eq-field eq-field-cost">
+                    <span class="eq-cost-label">消耗</span>
+                    <span class="eq-cost-value" id="${rowId}-cost">¥0.00</span>
+                </div>
+            </div>
+            <button type="button" class="btn btn-small eq-remove-btn" onclick="removeEquipmentRow('${rowId}')" title="移除">×</button>
+        `;
+        listEl.appendChild(rowEl);
+        updateEqCost(rowId);
+    }
+
+    function removeEquipmentRow(rowId) {
+        var rowEl = document.getElementById(rowId);
+        if (rowEl) rowEl.remove();
+        var listEl = document.getElementById('equipment-list');
+        var rows = listEl.querySelectorAll('.equipment-row');
+        if (rows.length === 0) {
+            document.getElementById('equipment-empty-hint').style.display = 'block';
+            document.getElementById('equipment-cost-summary').style.display = 'none';
+        }
+        updateTotalEquipmentCost();
+    }
+
+    function updateEqCost(rowId) {
+        var rowEl = document.getElementById(rowId);
+        if (!rowEl) return;
+        var select = rowEl.querySelector('.eq-select');
+        var qtyInput = rowEl.querySelector('.eq-qty');
+        var wearInput = rowEl.querySelector('.eq-wear');
+        var costEl = document.getElementById(rowId + '-cost');
+        var selectedOption = select.options[select.selectedIndex];
+        if (selectedOption && selectedOption.value) {
+            var price = selectedOption.dataset.price || 0;
+            var lifespan = selectedOption.dataset.lifespan || 24;
+            var qty = qtyInput.value || 1;
+            var wear = wearInput.value || 0.05;
+            var cost = calcUsageCost(price, lifespan, qty, wear);
+            costEl.textContent = '¥' + cost;
+        } else {
+            costEl.textContent = '¥0.00';
+        }
+        updateTotalEquipmentCost();
+    }
+
+    function updateTotalEquipmentCost() {
+        var rows = document.querySelectorAll('.equipment-row');
+        var total = 0;
+        rows.forEach(function(row) {
+            var costEl = row.querySelector('.eq-cost-value');
+            if (costEl) {
+                var val = parseFloat(costEl.textContent.replace('¥', '')) || 0;
+                total += val;
+            }
+        });
+        document.getElementById('equipment-total-cost').textContent = '¥' + total.toFixed(2);
+    }
+
+    (function() {
+        if (logEquipments && logEquipments.length > 0) {
+            logEquipments.forEach(function(eq) {
+                addEquipmentRow(eq);
+            });
+        }
     })();
     </script>
 {% endblock %}

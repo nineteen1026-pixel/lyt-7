@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}装备出入库 - {{ equipment['name'] }}{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>📦 装备出入库</h2>
+        <a href="{{ url_for('equipment_detail', eq_id=equipment['id']) }}" class="btn btn-secondary">← 返回装备详情</a>
+    </div>
+
+    <div class="detail-card" style="margin-bottom: 25px; padding: 20px;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center;">
+            <div style="flex: 1; min-width: 200px;">
+                <h3 style="margin-bottom: 10px; color: #2d3748;">{{ equipment['name'] }}</h3>
+                <div style="color: #718096; font-size: 14px;">
+                    <span style="background: #ebf4ff; padding: 3px 10px; border-radius: 10px; color: #2a4365; font-weight: 500;">{{ equipment['category'] }}</span>
+                    {% if equipment['brand'] %} · {{ equipment['brand'] }}{% endif %}
+                    {% if equipment['spec'] %} · {{ equipment['spec'] }}{% endif %}
+                </div>
+            </div>
+            <div style="text-align: center; padding: 15px 25px; background: linear-gradient(135deg, #667eea15, #764ba215); border-radius: 10px;">
+                <div style="font-size: 13px; color: #718096; margin-bottom: 4px;">当前可用库存</div>
+                <div style="font-size: 32px; font-weight: 700; color: #667eea;">{{ equipment['available_quantity'] or 0 }}</div>
+                <div style="font-size: 12px; color: #a0aec0;">/ {{ equipment['total_quantity'] or 0 }} 件</div>
+            </div>
+            <div style="text-align: center; padding: 15px 25px; background: #fffaf0; border-radius: 10px;">
+                <div style="font-size: 13px; color: #9c4221; margin-bottom: 4px;">参考单价</div>
+                <div style="font-size: 28px; font-weight: 700; color: #dd6b20;">¥{{ '%.2f'|format(equipment['unit_price'] or 0) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <form method="post" class="log-form">
+        <div class="form-grid">
+            <div class="form-group">
+                <label>操作类型 <span class="required">*</span></label>
+                <select name="type" id="trans_type" required style="padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; font-family: inherit;">
+                    <option value="">请选择操作</option>
+                    <option value="in">📥 入库</option>
+                    <option value="out">📤 出库</option>
+                    <option value="adjust">🔧 库存调整</option>
+                    <option value="discard">🗑️ 报废处理</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>数量 <span class="required">*</span></label>
+                <input type="number" name="quantity" required min="1" step="1" value="1"
+                       placeholder="请输入数量">
+            </div>
+
+            <div class="form-group">
+                <label>单价 (元)</label>
+                <input type="number" name="unit_price" step="0.01" min="0"
+                       value="{{ equipment['unit_price'] or '0' }}"
+                       placeholder="默认装备单价">
+            </div>
+
+            <div class="form-group">
+                <label>操作日期</label>
+                <input type="date" name="transaction_date"
+                       value="{{ today }}" id="trans_date">
+            </div>
+
+            <div class="form-group">
+                <label>关联出钓记录</label>
+                <select name="related_log_id" style="padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; font-family: inherit;">
+                    <option value="">不关联</option>
+                    {% for log in recent_logs %}
+                        <option value="{{ log['id'] }}">{{ log['created_at'] }} - {{ log['spot'] }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>操作人</label>
+                <input type="text" name="operator" maxlength="20"
+                       placeholder="如：管理员" value="">
+            </div>
+
+            <div class="form-group full-width">
+                <label>原因/备注</label>
+                <textarea name="reason" rows="2" maxlength="200"
+                          placeholder="如：补充库存、借用、损耗报废等"></textarea>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="{{ url_for('equipment_detail', eq_id=equipment['id']) }}" class="btn btn-secondary">取消</a>
+            <button type="submit" class="btn btn-primary">确认操作</button>
+        </div>
+    </form>
+
+    <script>
+        document.getElementById('trans_date').valueAsDate = new Date();
+    </script>
+{% endblock %}

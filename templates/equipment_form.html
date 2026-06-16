@@ -1,0 +1,120 @@
+{% extends 'base.html' %}
+
+{% block title %}{% if equipment %}编辑装备{% else %}新增装备{% endif %} - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>{% if equipment %}✏️ 编辑装备{% else %}➕ 新增装备{% endif %}</h2>
+        <a href="{{ url_for('equipments_list') }}" class="btn btn-secondary">← 返回列表</a>
+    </div>
+
+    <form method="post" class="log-form">
+        <div class="form-grid">
+            <div class="form-group">
+                <label>装备名称 <span class="required">*</span></label>
+                <input type="text" name="name" required maxlength="100"
+                       value="{{ equipment['name'] if equipment else '' }}"
+                       placeholder="如：达亿瓦波纹龙鱼竿">
+            </div>
+
+            <div class="form-group">
+                <label>装备分类 <span class="required">*</span></label>
+                <select name="category" required style="padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 14px; font-family: inherit;">
+                    <option value="">请选择分类</option>
+                    {% for cat in categories %}
+                        <option value="{{ cat }}" {% if equipment and equipment['category'] == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>品牌</label>
+                <input type="text" name="brand" maxlength="50"
+                       value="{{ equipment['brand'] if equipment and equipment['brand'] else '' }}"
+                       placeholder="如：达亿瓦、禧玛诺">
+            </div>
+
+            <div class="form-group">
+                <label>型号</label>
+                <input type="text" name="model" maxlength="50"
+                       value="{{ equipment['model'] if equipment and equipment['model'] else '' }}"
+                       placeholder="如：波纹龙C3 4.5米">
+            </div>
+
+            <div class="form-group">
+                <label>规格参数</label>
+                <input type="text" name="spec" maxlength="100"
+                       value="{{ equipment['spec'] if equipment and equipment['spec'] else '' }}"
+                       placeholder="如：4.5m / 120g / 28调">
+            </div>
+
+            <div class="form-group">
+                <label>单价 (元)</label>
+                <input type="number" name="unit_price" step="0.01" min="0"
+                       value="{{ equipment['unit_price'] if equipment and equipment['unit_price'] is not none else '0' }}"
+                       placeholder="0.00">
+            </div>
+
+            {% if not equipment %}
+                <div class="form-group">
+                    <label>初始入库数量</label>
+                    <input type="number" name="init_quantity" step="1" min="0"
+                           value="1" placeholder="1">
+                </div>
+
+                <div class="form-group">
+                    <label>购入日期</label>
+                    <input type="date" name="purchase_date"
+                           value="{{ equipment['purchase_date'] if equipment and equipment['purchase_date'] else '' }}">
+                </div>
+            {% else %}
+                <div class="form-group">
+                    <label>购入日期</label>
+                    <input type="date" name="purchase_date"
+                           value="{{ equipment['purchase_date'] if equipment and equipment['purchase_date'] else '' }}">
+                </div>
+
+                <div class="form-group">
+                    <label>预计使用寿命 (月)</label>
+                    <input type="number" name="lifespan_months" step="1" min="1"
+                           value="{{ equipment['lifespan_months'] if equipment and equipment['lifespan_months'] else '24' }}"
+                           placeholder="24">
+                </div>
+            {% endif %}
+
+            {% if not equipment %}
+                <div class="form-group">
+                    <label>供应商</label>
+                    <input type="text" name="supplier" maxlength="100"
+                           value="" placeholder="如：京东旗舰店">
+                </div>
+
+                <div class="form-group">
+                    <label>预计使用寿命 (月)</label>
+                    <input type="number" name="lifespan_months" step="1" min="1"
+                           value="24" placeholder="24">
+                </div>
+            {% else %}
+                <div class="form-group full-width">
+                    <label>供应商</label>
+                    <input type="text" name="supplier" maxlength="100"
+                           value="{{ equipment['supplier'] if equipment and equipment['supplier'] else '' }}"
+                           placeholder="如：京东旗舰店">
+                </div>
+            {% endif %}
+
+            <div class="form-group full-width">
+                <label>备注说明</label>
+                <textarea name="description" rows="3" maxlength="500"
+                          placeholder="填写装备的详细说明、使用注意事项等">{{ equipment['description'] if equipment and equipment['description'] else '' }}</textarea>
+            </div>
+        </div>
+
+        <div class="form-actions">
+            <a href="{{ url_for('equipments_list') }}" class="btn btn-secondary">取消</a>
+            <button type="submit" class="btn btn-primary">
+                {% if equipment %}保存修改{% else %}确认添加{% endif %}
+            </button>
+        </div>
+    </form>
+{% endblock %}

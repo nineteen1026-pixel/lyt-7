@@ -135,6 +135,63 @@ def init_db():
         conn.execute('ALTER TABLE baits ADD COLUMN deleted_at TIMESTAMP')
     if not column_exists(conn, 'fishing_invitations', 'deleted_at'):
         conn.execute('ALTER TABLE fishing_invitations ADD COLUMN deleted_at TIMESTAMP')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS equipments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            brand TEXT,
+            model TEXT,
+            spec TEXT,
+            unit_price REAL DEFAULT 0,
+            total_quantity INTEGER DEFAULT 0,
+            available_quantity INTEGER DEFAULT 0,
+            purchase_date DATE,
+            supplier TEXT,
+            description TEXT,
+            lifespan_months INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            deleted_at TIMESTAMP
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS equipment_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            equipment_id INTEGER NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('in', 'out', 'adjust', 'discard')),
+            quantity INTEGER NOT NULL,
+            unit_price REAL,
+            total_cost REAL,
+            related_log_id INTEGER,
+            operator TEXT,
+            reason TEXT,
+            transaction_date DATE NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (equipment_id) REFERENCES equipments(id) ON DELETE CASCADE,
+            FOREIGN KEY (related_log_id) REFERENCES fishing_logs(id) ON DELETE SET NULL
+        )
+    ''')
+
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS log_equipments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_id INTEGER NOT NULL,
+            equipment_id INTEGER NOT NULL,
+            quantity INTEGER NOT NULL DEFAULT 1,
+            usage_cost REAL DEFAULT 0,
+            wear_rate REAL DEFAULT 0,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (log_id) REFERENCES fishing_logs(id) ON DELETE CASCADE,
+            FOREIGN KEY (equipment_id) REFERENCES equipments(id) ON DELETE CASCADE
+        )
+    ''')
+
+    if not column_exists(conn, 'equipments', 'deleted_at'):
+        conn.execute('ALTER TABLE equipments ADD COLUMN deleted_at TIMESTAMP')
+
     conn.commit()
     conn.close()
 
@@ -221,6 +278,8 @@ def edit_log(log_id):
     bait_list = get_all_baits(conn)
     common_species = get_common_species(conn)
     harvest_templates = get_harvest_templates(conn)
+    equipment_list = get_all_equipments(conn)
+    log_equipments, total_eq_cost = get_log_equipments(conn, log_id)
 
     if log is None:
         conn.close()
@@ -240,6 +299,27 @@ def edit_log(log_id):
         temperature = request.form.get('temperature', '').strip()
         humidity = request.form.get('humidity', '').strip()
         wind = request.form.get('wind', '').strip()
+
+        eq_ids = request.form.getlist('equipment_id[]')
+        eq_qtys = request.form.getlist('equipment_qty[]')
+        eq_wears = request.form.getlist('equipment_wear[]')
+        eq_notes = request.form.getlist('equipment_note[]')
+
+        equipment_data = []
+        for i in range(len(eq_ids)):
+            try:
+                eid = int(eq_ids[i]) if eq_ids[i] else None
+                eqty = int(eq_qtys[i]) if i < len(eq_qtys) and eq_qtys[i] else 1
+                ewear = float(eq_wears[i]) if i < len(eq_wears) and eq_wears[i] else 0.05
+                enote = eq_notes[i] if i < len(eq_notes) else ''
+                equipment_data.append({
+                    'equipment_id': eid,
+                    'quantity': eqty,
+                    'wear_rate': ewear,
+                    'notes': enote
+                })
+            except (ValueError, IndexError):
+                continue
 
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
@@ -275,6 +355,8 @@ def edit_log(log_id):
             ''', (spot, weather, water_level, bait, fish_species, harvest,
                   next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None,
                   wind or None, log_id))
+
+            save_log_equipments(conn, log_id, equipment_data)
             conn.commit()
             flash('记录更新成功！', 'success')
             conn.close()
@@ -284,7 +366,9 @@ def edit_log(log_id):
     return render_template('edit.html', log=log, bait_list=bait_list,
                            page=page, sort_by=sort_by, per_page=per_page,
                            default_city=WEATHER_API_CONFIG['city'],
-                           common_species=common_species, harvest_templates=harvest_templates)
+                           common_species=common_species, harvest_templates=harvest_templates,
+                           equipment_list=equipment_list, log_equipments=log_equipments,
+                           total_equipment_cost=total_eq_cost)
 
 
 def get_upcoming_strategies(conn):
@@ -422,6 +506,7 @@ def add_log():
     bait_list = get_all_baits(conn)
     common_species = get_common_species(conn)
     harvest_templates = get_harvest_templates(conn)
+    equipment_list = get_all_equipments(conn)
 
     if request.method == 'POST':
         spot = request.form['spot'].strip()
@@ -437,13 +522,37 @@ def add_log():
         humidity = request.form.get('humidity', '').strip()
         wind = request.form.get('wind', '').strip()
 
+        eq_ids = request.form.getlist('equipment_id[]')
+        eq_qtys = request.form.getlist('equipment_qty[]')
+        eq_wears = request.form.getlist('equipment_wear[]')
+        eq_notes = request.form.getlist('equipment_note[]')
+
+        equipment_data = []
+        for i in range(len(eq_ids)):
+            try:
+                eid = int(eq_ids[i]) if eq_ids[i] else None
+                eqty = int(eq_qtys[i]) if i < len(eq_qtys) and eq_qtys[i] else 1
+                ewear = float(eq_wears[i]) if i < len(eq_wears) and eq_wears[i] else 0.05
+                enote = eq_notes[i] if i < len(eq_notes) else ''
+                equipment_data.append({
+                    'equipment_id': eid,
+                    'quantity': eqty,
+                    'wear_rate': ewear,
+                    'notes': enote
+                })
+            except (ValueError, IndexError):
+                continue
+
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
         else:
-            conn.execute('''
+            cursor = conn.execute('''
                 INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date, created_at, temperature, humidity, wind)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None, wind or None))
+            log_id = cursor.lastrowid
+
+            save_log_equipments(conn, log_id, equipment_data)
             conn.commit()
             flash('记录添加成功！', 'success')
             conn.close()
@@ -451,7 +560,8 @@ def add_log():
 
     conn.close()
     return render_template('add.html', bait_list=bait_list, default_city=WEATHER_API_CONFIG['city'],
-                           common_species=common_species, harvest_templates=harvest_templates)
+                           common_species=common_species, harvest_templates=harvest_templates,
+                           equipment_list=equipment_list, log_equipments=[], total_equipment_cost=0)
 
 
 @app.route('/log/<int:log_id>')
@@ -467,6 +577,7 @@ def log_detail(log_id):
         flash('记录不存在！', 'error')
         return redirect(url_for('index'))
     audit_logs = get_audit_logs(conn, log_id)
+    log_equipments, total_equipment_cost = get_log_equipments(conn, log_id)
 
     spot_logs = conn.execute('''
         SELECT id, created_at, harvest, fish_species, bait
@@ -517,13 +628,22 @@ def log_detail(log_id):
             next_date_logs = date_groups[date_list[current_date_index + 1]]
             next_day_logs = next_date_logs[0]
 
+    harvest_value = parse_harvest_value(log['harvest'])
+    cost_per_kg = 0
+    if harvest_value > 0 and total_equipment_cost > 0:
+        cost_per_kg = round(total_equipment_cost / harvest_value, 2)
+
     conn.close()
     return render_template('detail.html', log=log, audit_logs=audit_logs,
                            page=page, sort_by=sort_by, per_page=per_page,
                            spot_timeline=spot_timeline,
                            current_date_index=current_date_index,
                            current_log_in_date=current_log_in_date,
-                           prev_day_logs=prev_day_logs, next_day_logs=next_day_logs)
+                           prev_day_logs=prev_day_logs, next_day_logs=next_day_logs,
+                           log_equipments=log_equipments,
+                           total_equipment_cost=total_equipment_cost,
+                           harvest_value=harvest_value,
+                           cost_per_kg=cost_per_kg)
 
 
 @app.route('/by-spot')
@@ -2271,7 +2391,7 @@ def heatmap_data():
 @app.route('/recycle-bin')
 def recycle_bin():
     tab = request.args.get('tab', 'logs')
-    valid_tabs = ['logs', 'spots', 'baits', 'invitations']
+    valid_tabs = ['logs', 'spots', 'baits', 'invitations', 'equipments']
     if tab not in valid_tabs:
         tab = 'logs'
 
@@ -2281,6 +2401,7 @@ def recycle_bin():
     spot_count = conn.execute('SELECT COUNT(*) FROM fishing_spots WHERE deleted_at IS NOT NULL').fetchone()[0]
     bait_count = conn.execute('SELECT COUNT(*) FROM baits WHERE deleted_at IS NOT NULL').fetchone()[0]
     inv_count = conn.execute('SELECT COUNT(*) FROM fishing_invitations WHERE deleted_at IS NOT NULL').fetchone()[0]
+    eq_count = conn.execute('SELECT COUNT(*) FROM equipments WHERE deleted_at IS NOT NULL').fetchone()[0]
 
     items = []
     if tab == 'logs':
@@ -2311,6 +2432,13 @@ def recycle_bin():
             WHERE deleted_at IS NOT NULL
             ORDER BY deleted_at DESC
         ''').fetchall()
+    elif tab == 'equipments':
+        items = conn.execute('''
+            SELECT id, name, category, brand, model, unit_price, deleted_at
+            FROM equipments
+            WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ''').fetchall()
 
     conn.close()
     return render_template(
@@ -2321,7 +2449,8 @@ def recycle_bin():
             'logs': log_count,
             'spots': spot_count,
             'baits': bait_count,
-            'invitations': inv_count
+            'invitations': inv_count,
+            'equipments': eq_count
         }
     )
 
@@ -2332,7 +2461,8 @@ def restore_item(item_type, item_id):
         'logs': 'fishing_logs',
         'spots': 'fishing_spots',
         'baits': 'baits',
-        'invitations': 'fishing_invitations'
+        'invitations': 'fishing_invitations',
+        'equipments': 'equipments'
     }
     if item_type not in valid_types:
         flash('无效的类型！', 'error')
@@ -2353,7 +2483,8 @@ def permanent_delete_item(item_type, item_id):
         'logs': 'fishing_logs',
         'spots': 'fishing_spots',
         'baits': 'baits',
-        'invitations': 'fishing_invitations'
+        'invitations': 'fishing_invitations',
+        'equipments': 'equipments'
     }
     if item_type not in valid_types:
         flash('无效的类型！', 'error')
@@ -2377,7 +2508,8 @@ def batch_restore():
         'logs': 'fishing_logs',
         'spots': 'fishing_spots',
         'baits': 'baits',
-        'invitations': 'fishing_invitations'
+        'invitations': 'fishing_invitations',
+        'equipments': 'equipments'
     }
     if item_type not in valid_types or not ids:
         flash('请先选择要恢复的项目！', 'error')
@@ -2402,7 +2534,8 @@ def batch_permanent_delete():
         'logs': 'fishing_logs',
         'spots': 'fishing_spots',
         'baits': 'baits',
-        'invitations': 'fishing_invitations'
+        'invitations': 'fishing_invitations',
+        'equipments': 'equipments'
     }
     if item_type not in valid_types or not ids:
         flash('请先选择要彻底删除的项目！', 'error')
@@ -2416,6 +2549,520 @@ def batch_permanent_delete():
     conn.close()
     flash(f'已彻底删除 {len(ids)} 条记录！', 'success')
     return redirect(url_for('recycle_bin', tab=item_type))
+
+
+EQUIPMENT_CATEGORIES = [
+    '鱼竿', '渔轮', '鱼线', '鱼钩', '浮漂', '鱼护',
+    '钓箱', '钓椅', '抄网', '支架', '遮阳伞', '饵料盆',
+    '夜钓灯', '探鱼器', '钓鱼服', '其他'
+]
+
+
+def get_all_equipments(conn, include_deleted=False):
+    query = 'SELECT * FROM equipments'
+    conditions = []
+    if not include_deleted:
+        conditions.append('deleted_at IS NULL')
+    if conditions:
+        query += ' WHERE ' + ' AND '.join(conditions)
+    query += ' ORDER BY category, name'
+    rows = conn.execute(query).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_equipment_usage_stats(conn, equipment_id):
+    total_used = conn.execute('''
+        SELECT COALESCE(SUM(le.quantity), 0) as cnt
+        FROM log_equipments le
+        JOIN fishing_logs fl ON le.log_id = fl.id
+        WHERE le.equipment_id = ? AND fl.deleted_at IS NULL
+    ''', (equipment_id,)).fetchone()['cnt']
+
+    total_cost = conn.execute('''
+        SELECT COALESCE(SUM(le.usage_cost), 0) as cost
+        FROM log_equipments le
+        JOIN fishing_logs fl ON le.log_id = fl.id
+        WHERE le.equipment_id = ? AND fl.deleted_at IS NULL
+    ''', (equipment_id,)).fetchone()['cost']
+
+    last_used = conn.execute('''
+        SELECT MAX(fl.created_at) as last_date
+        FROM log_equipments le
+        JOIN fishing_logs fl ON le.log_id = fl.id
+        WHERE le.equipment_id = ? AND fl.deleted_at IS NULL
+    ''', (equipment_id,)).fetchone()['last_date']
+
+    return {
+        'use_count': total_used,
+        'total_usage_cost': round(total_cost, 2),
+        'last_used_date': last_used
+    }
+
+
+def calculate_usage_cost(equipment, quantity, wear_rate=0.05):
+    unit_price = equipment.get('unit_price') or 0
+    lifespan = equipment.get('lifespan_months') or 24
+    base_cost = unit_price / lifespan
+    wear_cost = unit_price * wear_rate
+    single_cost = (base_cost + wear_cost) * quantity
+    return round(single_cost, 2)
+
+
+def update_equipment_quantity(conn, equipment_id):
+    total_in = conn.execute('''
+        SELECT COALESCE(SUM(quantity), 0) as cnt
+        FROM equipment_transactions
+        WHERE equipment_id = ? AND type = 'in'
+    ''', (equipment_id,)).fetchone()['cnt']
+
+    total_out = conn.execute('''
+        SELECT COALESCE(SUM(quantity), 0) as cnt
+        FROM equipment_transactions
+        WHERE equipment_id = ? AND type IN ('out', 'discard')
+    ''', (equipment_id,)).fetchone()['cnt']
+
+    adjustment = conn.execute('''
+        SELECT COALESCE(SUM(quantity), 0) as cnt
+        FROM equipment_transactions
+        WHERE equipment_id = ? AND type = 'adjust'
+    ''', (equipment_id,)).fetchone()['cnt']
+
+    total_quantity = total_in + adjustment
+    available_quantity = total_in - total_out + adjustment
+
+    conn.execute('''
+        UPDATE equipments SET total_quantity = ?, available_quantity = ? WHERE id = ?
+    ''', (total_quantity, available_quantity, equipment_id))
+
+
+@app.route('/equipments')
+def equipments_list():
+    conn = get_db()
+    category = request.args.get('category', 'all')
+    sort_by = request.args.get('sort', 'category')
+
+    query = '''
+        SELECT e.*,
+               (SELECT COALESCE(SUM(le.quantity), 0)
+                FROM log_equipments le
+                JOIN fishing_logs fl ON le.log_id = fl.id
+                WHERE le.equipment_id = e.id AND fl.deleted_at IS NULL) as use_count
+        FROM equipments e
+        WHERE e.deleted_at IS NULL
+    '''
+    params = []
+
+    if category != 'all':
+        query += ' AND e.category = ?'
+        params.append(category)
+
+    if sort_by == 'name':
+        query += ' ORDER BY e.name'
+    elif sort_by == 'price':
+        query += ' ORDER BY e.unit_price DESC'
+    elif sort_by == 'usage':
+        query += ' ORDER BY use_count DESC'
+    elif sort_by == 'available':
+        query += ' ORDER BY e.available_quantity DESC'
+    elif sort_by == 'recent':
+        query += ' ORDER BY e.created_at DESC'
+    else:
+        query += ' ORDER BY e.category, e.name'
+
+    equipments = conn.execute(query, params).fetchall()
+
+    result = []
+    for eq in equipments:
+        eq_dict = dict(eq)
+        stats = get_equipment_usage_stats(conn, eq['id'])
+        eq_dict.update(stats)
+        result.append(eq_dict)
+
+    categories = conn.execute('''
+        SELECT DISTINCT category FROM equipments WHERE deleted_at IS NULL ORDER BY category
+    ''').fetchall()
+    category_list = [c['category'] for c in categories if c['category']]
+
+    stats_overview = conn.execute('''
+        SELECT
+            COUNT(*) as total_types,
+            COALESCE(SUM(unit_price * total_quantity), 0) as total_value,
+            COALESCE(SUM(total_quantity), 0) as total_items
+        FROM equipments WHERE deleted_at IS NULL
+    ''').fetchone()
+
+    conn.close()
+
+    return render_template(
+        'equipments.html',
+        equipments=result,
+        category=category,
+        sort_by=sort_by,
+        category_list=category_list,
+        all_categories=EQUIPMENT_CATEGORIES,
+        stats_overview=dict(stats_overview)
+    )
+
+
+@app.route('/equipments/add', methods=['GET', 'POST'])
+def add_equipment():
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        category = request.form['category'].strip()
+        brand = request.form.get('brand', '').strip()
+        model = request.form.get('model', '').strip()
+        spec = request.form.get('spec', '').strip()
+        unit_price = request.form.get('unit_price', '0').strip()
+        init_quantity = request.form.get('init_quantity', '0').strip()
+        purchase_date = request.form.get('purchase_date', '').strip()
+        supplier = request.form.get('supplier', '').strip()
+        description = request.form.get('description', '').strip()
+        lifespan_months = request.form.get('lifespan_months', '24').strip()
+
+        if not name or not category:
+            flash('请填写装备名称和分类！', 'error')
+        else:
+            conn = get_db()
+            try:
+                price = float(unit_price) if unit_price else 0
+                qty = int(init_quantity) if init_quantity else 0
+                lifespan = int(lifespan_months) if lifespan_months else 24
+
+                cursor = conn.execute('''
+                    INSERT INTO equipments (name, category, brand, model, spec, unit_price,
+                                           purchase_date, supplier, description, lifespan_months)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (name, category, brand or None, model or None, spec or None,
+                      price, purchase_date or None, supplier or None,
+                      description or None, lifespan))
+
+                equipment_id = cursor.lastrowid
+
+                if qty > 0:
+                    conn.execute('''
+                        INSERT INTO equipment_transactions
+                        (equipment_id, type, quantity, unit_price, total_cost, reason, transaction_date)
+                        VALUES (?, 'in', ?, ?, ?, ?, ?)
+                    ''', (equipment_id, qty, price, price * qty, '初始入库',
+                          purchase_date or datetime.now().strftime('%Y-%m-%d')))
+                    update_equipment_quantity(conn, equipment_id)
+
+                conn.commit()
+                flash('装备添加成功！', 'success')
+                return redirect(url_for('equipments_list'))
+            except Exception as e:
+                flash(f'添加失败：{str(e)}', 'error')
+            finally:
+                conn.close()
+
+    return render_template('equipment_form.html', equipment=None, categories=EQUIPMENT_CATEGORIES)
+
+
+@app.route('/equipments/<int:eq_id>')
+def equipment_detail(eq_id):
+    conn = get_db()
+    equipment = conn.execute('SELECT * FROM equipments WHERE id = ?', (eq_id,)).fetchone()
+
+    if equipment is None:
+        conn.close()
+        flash('装备不存在！', 'error')
+        return redirect(url_for('equipments_list'))
+
+    eq_dict = dict(equipment)
+    stats = get_equipment_usage_stats(conn, eq_id)
+    eq_dict.update(stats)
+
+    transactions = conn.execute('''
+        SELECT et.*,
+               (SELECT spot FROM fishing_logs WHERE id = et.related_log_id) as related_spot,
+               (SELECT created_at FROM fishing_logs WHERE id = et.related_log_id) as related_date
+        FROM equipment_transactions et
+        WHERE et.equipment_id = ?
+        ORDER BY et.transaction_date DESC, et.id DESC
+    ''', (eq_id,)).fetchall()
+
+    usage_logs = conn.execute('''
+        SELECT le.*, fl.spot, fl.created_at as log_date, fl.harvest
+        FROM log_equipments le
+        JOIN fishing_logs fl ON le.log_id = fl.id
+        WHERE le.equipment_id = ? AND fl.deleted_at IS NULL
+        ORDER BY fl.created_at DESC, le.id DESC
+    ''', (eq_id,)).fetchall()
+
+    conn.close()
+
+    return render_template(
+        'equipment_detail.html',
+        equipment=eq_dict,
+        transactions=[dict(t) for t in transactions],
+        usage_logs=[dict(l) for l in usage_logs]
+    )
+
+
+@app.route('/equipments/<int:eq_id>/edit', methods=['GET', 'POST'])
+def edit_equipment(eq_id):
+    conn = get_db()
+    equipment = conn.execute('SELECT * FROM equipments WHERE id = ?', (eq_id,)).fetchone()
+
+    if equipment is None:
+        conn.close()
+        flash('装备不存在！', 'error')
+        return redirect(url_for('equipments_list'))
+
+    if request.method == 'POST':
+        name = request.form['name'].strip()
+        category = request.form['category'].strip()
+        brand = request.form.get('brand', '').strip()
+        model = request.form.get('model', '').strip()
+        spec = request.form.get('spec', '').strip()
+        unit_price = request.form.get('unit_price', '0').strip()
+        purchase_date = request.form.get('purchase_date', '').strip()
+        supplier = request.form.get('supplier', '').strip()
+        description = request.form.get('description', '').strip()
+        lifespan_months = request.form.get('lifespan_months', '24').strip()
+
+        if not name or not category:
+            flash('请填写装备名称和分类！', 'error')
+        else:
+            try:
+                price = float(unit_price) if unit_price else 0
+                lifespan = int(lifespan_months) if lifespan_months else 24
+
+                conn.execute('''
+                    UPDATE equipments SET
+                        name = ?, category = ?, brand = ?, model = ?, spec = ?,
+                        unit_price = ?, purchase_date = ?, supplier = ?,
+                        description = ?, lifespan_months = ?
+                    WHERE id = ?
+                ''', (name, category, brand or None, model or None, spec or None,
+                      price, purchase_date or None, supplier or None,
+                      description or None, lifespan, eq_id))
+                conn.commit()
+                flash('装备更新成功！', 'success')
+                return redirect(url_for('equipment_detail', eq_id=eq_id))
+            except Exception as e:
+                flash(f'更新失败：{str(e)}', 'error')
+            finally:
+                conn.close()
+    else:
+        conn.close()
+
+    return render_template('equipment_form.html', equipment=equipment, categories=EQUIPMENT_CATEGORIES)
+
+
+@app.route('/equipments/<int:eq_id>/delete', methods=['POST'])
+def delete_equipment(eq_id):
+    conn = get_db()
+    conn.execute('UPDATE equipments SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?', (eq_id,))
+    conn.commit()
+    conn.close()
+    flash('装备已移入回收站！', 'success')
+    return redirect(url_for('equipments_list'))
+
+
+@app.route('/equipments/<int:eq_id>/transaction', methods=['GET', 'POST'])
+def equipment_transaction(eq_id):
+    conn = get_db()
+    equipment = conn.execute('SELECT * FROM equipments WHERE id = ?', (eq_id,)).fetchone()
+
+    if equipment is None:
+        conn.close()
+        flash('装备不存在！', 'error')
+        return redirect(url_for('equipments_list'))
+
+    recent_logs = conn.execute('''
+        SELECT id, spot, created_at FROM fishing_logs
+        WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 20
+    ''').fetchall()
+
+    if request.method == 'POST':
+        trans_type = request.form['type'].strip()
+        quantity = request.form.get('quantity', '0').strip()
+        unit_price = request.form.get('unit_price', '0').strip()
+        reason = request.form.get('reason', '').strip()
+        operator = request.form.get('operator', '').strip()
+        trans_date = request.form.get('transaction_date', '').strip()
+        related_log_id = request.form.get('related_log_id', '').strip()
+
+        if trans_type not in ('in', 'out', 'adjust', 'discard'):
+            flash('无效的操作类型！', 'error')
+        elif not quantity or int(quantity) <= 0:
+            flash('请填写有效的数量！', 'error')
+        else:
+            try:
+                qty = int(quantity)
+                price = float(unit_price) if unit_price else (equipment['unit_price'] or 0)
+                qty_signed = qty if trans_type in ('in', 'adjust') else -qty
+                total = price * abs(qty)
+
+                if trans_type in ('out', 'discard'):
+                    if qty > (equipment['available_quantity'] or 0):
+                        flash(f'库存不足！当前可用：{equipment["available_quantity"] or 0}', 'error')
+                        conn.close()
+                        return redirect(url_for('equipment_transaction', eq_id=eq_id))
+
+                conn.execute('''
+                    INSERT INTO equipment_transactions
+                    (equipment_id, type, quantity, unit_price, total_cost,
+                     related_log_id, operator, reason, transaction_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (eq_id, trans_type, qty_signed, price, total,
+                      int(related_log_id) if related_log_id else None,
+                      operator or None, reason or None,
+                      trans_date or datetime.now().strftime('%Y-%m-%d')))
+
+                update_equipment_quantity(conn, eq_id)
+                conn.commit()
+                flash('出入库操作成功！', 'success')
+                return redirect(url_for('equipment_detail', eq_id=eq_id))
+            except Exception as e:
+                flash(f'操作失败：{str(e)}', 'error')
+            finally:
+                conn.close()
+    else:
+        conn.close()
+
+    return render_template(
+        'equipment_transaction.html',
+        equipment=equipment,
+        recent_logs=recent_logs
+    )
+
+
+@app.route('/equipment-transactions')
+def transactions_list():
+    conn = get_db()
+    eq_filter = request.args.get('equipment', 'all', type=str)
+    type_filter = request.args.get('type', 'all')
+    date_start = request.args.get('date_start', '').strip()
+    date_end = request.args.get('date_end', '').strip()
+
+    query = '''
+        SELECT et.*, e.name as equipment_name, e.category as equipment_category,
+               (SELECT spot FROM fishing_logs WHERE id = et.related_log_id) as related_spot
+        FROM equipment_transactions et
+        JOIN equipments e ON et.equipment_id = e.id
+        WHERE e.deleted_at IS NULL
+    '''
+    params = []
+
+    if eq_filter.isdigit() and int(eq_filter) > 0:
+        query += ' AND et.equipment_id = ?'
+        params.append(int(eq_filter))
+
+    if type_filter != 'all':
+        query += ' AND et.type = ?'
+        params.append(type_filter)
+
+    if date_start:
+        query += ' AND et.transaction_date >= ?'
+        params.append(date_start)
+
+    if date_end:
+        query += ' AND et.transaction_date <= ?'
+        params.append(date_end)
+
+    query += ' ORDER BY et.transaction_date DESC, et.id DESC LIMIT 500'
+
+    transactions = conn.execute(query, params).fetchall()
+    equipments = get_all_equipments(conn)
+
+    totals = conn.execute('''
+        SELECT
+            COALESCE(SUM(CASE WHEN type = 'in' THEN total_cost ELSE 0 END), 0) as total_in_cost,
+            COALESCE(SUM(CASE WHEN type IN ('out', 'discard') THEN total_cost ELSE 0 END), 0) as total_out_cost
+        FROM equipment_transactions et
+        JOIN equipments e ON et.equipment_id = e.id
+        WHERE e.deleted_at IS NULL
+    ''').fetchone()
+
+    conn.close()
+
+    return render_template(
+        'equipment_transactions.html',
+        transactions=[dict(t) for t in transactions],
+        equipments=equipments,
+        eq_filter=eq_filter,
+        type_filter=type_filter,
+        date_start=date_start,
+        date_end=date_end,
+        totals=dict(totals)
+    )
+
+
+def get_log_equipments(conn, log_id):
+    rows = conn.execute('''
+        SELECT le.*, e.name as equipment_name, e.category as equipment_category,
+               e.unit_price as equipment_price, e.spec as equipment_spec
+        FROM log_equipments le
+        JOIN equipments e ON le.equipment_id = e.id
+        WHERE le.log_id = ?
+        ORDER BY le.id
+    ''', (log_id,)).fetchall()
+    result = []
+    total_cost = 0
+    for r in rows:
+        r_dict = dict(r)
+        total_cost += r_dict.get('usage_cost') or 0
+        result.append(r_dict)
+    return result, round(total_cost, 2)
+
+
+def save_log_equipments(conn, log_id, equipment_data):
+    conn.execute('DELETE FROM log_equipments WHERE log_id = ?', (log_id,))
+
+    for item in equipment_data:
+        eq_id = item.get('equipment_id')
+        quantity = item.get('quantity', 1)
+        notes = item.get('notes', '')
+        wear_rate = item.get('wear_rate', 0.05)
+
+        if not eq_id:
+            continue
+
+        equipment = conn.execute('SELECT * FROM equipments WHERE id = ?', (eq_id,)).fetchone()
+        if not equipment:
+            continue
+
+        usage_cost = calculate_usage_cost(dict(equipment), quantity, wear_rate)
+
+        conn.execute('''
+            INSERT INTO log_equipments
+            (log_id, equipment_id, quantity, usage_cost, wear_rate, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (log_id, eq_id, quantity, usage_cost, wear_rate, notes or None))
+
+
+@app.route('/equipments/api/search')
+def api_equipments_search():
+    conn = get_db()
+    try:
+        keyword = request.args.get('q', '').strip()
+        category = request.args.get('category', '').strip()
+
+        query = '''
+            SELECT id, name, category, brand, spec, unit_price, available_quantity
+            FROM equipments
+            WHERE deleted_at IS NULL AND available_quantity > 0
+        '''
+        params = []
+
+        if keyword:
+            query += ' AND (name LIKE ? OR brand LIKE ? OR spec LIKE ?)'
+            kw = f'%{keyword}%'
+            params.extend([kw, kw, kw])
+
+        if category:
+            query += ' AND category = ?'
+            params.append(category)
+
+        query += ' ORDER BY category, name LIMIT 50'
+        rows = conn.execute(query, params).fetchall()
+        return jsonify({'success': True, 'data': [dict(r) for r in rows]})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
 
 
 if __name__ == '__main__':

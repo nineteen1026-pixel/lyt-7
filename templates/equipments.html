@@ -1,0 +1,148 @@
+{% extends 'base.html' %}
+
+{% block title %}装备台账 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🎒 装备台账</h2>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <a href="{{ url_for('transactions_list') }}" class="btn btn-secondary">📋 出入库记录</a>
+            <a href="{{ url_for('add_equipment') }}" class="btn btn-primary">+ 新增装备</a>
+        </div>
+    </div>
+
+    <div class="summary-card" style="margin-bottom: 20px;">
+        <div class="summary-title">📊 装备概览</div>
+        <div class="summary-grid">
+            <div class="summary-item">
+                <div class="summary-icon">📦</div>
+                <div class="summary-content">
+                    <div class="summary-label">装备种类</div>
+                    <div class="summary-value">{{ stats_overview.total_types or 0 }} 种</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">🔢</div>
+                <div class="summary-content">
+                    <div class="summary-label">装备总数</div>
+                    <div class="summary-value">{{ stats_overview.total_items or 0 }} 件</div>
+                </div>
+            </div>
+            <div class="summary-item">
+                <div class="summary-icon">💰</div>
+                <div class="summary-content">
+                    <div class="summary-label">资产总值</div>
+                    <div class="summary-value">¥ {{ '%.2f'|format(stats_overview.total_value or 0) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">分类：</span>
+            <a href="{{ url_for('equipments_list', category='all', sort=sort_by) }}"
+               class="filter-btn {% if category == 'all' %}active{% endif %}">全部</a>
+            {% for cat in all_categories %}
+                <a href="{{ url_for('equipments_list', category=cat, sort=sort_by) }}"
+                   class="filter-btn {% if category == cat %}active{% endif %}">{{ cat }}</a>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <div class="filter-group">
+            <span class="filter-label">排序：</span>
+            <a href="{{ url_for('equipments_list', category=category, sort='category') }}"
+               class="filter-btn {% if sort_by == 'category' %}active{% endif %}">按分类</a>
+            <a href="{{ url_for('equipments_list', category=category, sort='name') }}"
+               class="filter-btn {% if sort_by == 'name' %}active{% endif %}">按名称</a>
+            <a href="{{ url_for('equipments_list', category=category, sort='price') }}"
+               class="filter-btn {% if sort_by == 'price' %}active{% endif %}">按单价</a>
+            <a href="{{ url_for('equipments_list', category=category, sort='available') }}"
+               class="filter-btn {% if sort_by == 'available' %}active{% endif %}">按库存</a>
+            <a href="{{ url_for('equipments_list', category=category, sort='usage') }}"
+               class="filter-btn {% if sort_by == 'usage' %}active{% endif %}">按使用</a>
+            <a href="{{ url_for('equipments_list', category=category, sort='recent') }}"
+               class="filter-btn {% if sort_by == 'recent' %}active{% endif %}">最近添加</a>
+        </div>
+    </div>
+
+    {% if equipments %}
+        <div class="spot-grid">
+            {% for eq in equipments %}
+                <div class="spot-card">
+                    <div class="spot-card-header">
+                        <div class="spot-title-row">
+                            <h3 class="spot-name">
+                                <a href="{{ url_for('equipment_detail', eq_id=eq['id']) }}">{{ eq['name'] }}</a>
+                            </h3>
+                        </div>
+                        <div class="spot-stats">
+                            <div class="spot-rating">
+                                <span class="rating-value" style="color: #667eea;">{{ eq['category'] }}</span>
+                            </div>
+                            <div class="spot-visits">
+                                💰 ¥{{ '%.2f'|format(eq['unit_price'] or 0) }}
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if eq['brand'] or eq['model'] or eq['spec'] %}
+                        <div class="spot-desc" style="color: #4a5568;">
+                            {% if eq['brand'] %}<strong>{{ eq['brand'] }}</strong>{% endif %}
+                            {% if eq['model'] %} · {{ eq['model'] }}{% endif %}
+                            {% if eq['spec'] %} · {{ eq['spec'] }}{% endif %}
+                        </div>
+                    {% endif %}
+
+                    {% if eq['description'] %}
+                        <div class="spot-desc">{{ eq['description'][:60] }}{% if eq['description']|length > 60 %}...{% endif %}</div>
+                    {% endif %}
+
+                    <div class="spot-location" style="margin-top: 10px;">
+                        <span class="spot-address">
+                            📦 库存: <strong>{{ eq['available_quantity'] or 0 }}</strong> / {{ eq['total_quantity'] or 0 }}
+                        </span>
+                        <span class="spot-coords">
+                            🔧 使用: {{ eq['use_count'] or 0 }} 次
+                        </span>
+                        {% if eq['last_used_date'] %}
+                            <span class="spot-coords">
+                                📅 上次: {{ eq['last_used_date'] }}
+                            </span>
+                        {% endif %}
+                    </div>
+
+                    {% if eq['lifespan_months'] %}
+                        <div class="spot-location" style="background: #fefcbf; border-color: #fbd38d;">
+                            <span class="spot-address">
+                                ⏱️ 预计寿命: {{ eq['lifespan_months'] }} 个月
+                            </span>
+                            {% if eq['total_usage_cost'] %}
+                                <span class="spot-coords">
+                                    💸 累计消耗: ¥{{ '%.2f'|format(eq['total_usage_cost']) }}
+                                </span>
+                            {% endif %}
+                        </div>
+                    {% endif %}
+
+                    <div class="spot-card-footer">
+                        <a href="{{ url_for('equipment_detail', eq_id=eq['id']) }}" class="btn btn-small">详情</a>
+                        <a href="{{ url_for('equipment_transaction', eq_id=eq['id']) }}" class="btn btn-small" style="background: #ebf8ff; color: #2a4365;">出入库</a>
+                        <a href="{{ url_for('edit_equipment', eq_id=eq['id']) }}" class="btn btn-small">编辑</a>
+                        <form method="post" action="{{ url_for('delete_equipment', eq_id=eq['id']) }}"
+                              onsubmit="return confirm('确定要删除该装备吗？');" style="display: inline;">
+                            <button type="submit" class="btn btn-small" style="color: #e53e3e;">删除</button>
+                        </form>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>还没有添加任何装备，快去添加第一件吧！</p>
+            <a href="{{ url_for('add_equipment') }}" class="btn btn-primary">+ 新增装备</a>
+        </div>
+    {% endif %}
+{% endblock %}

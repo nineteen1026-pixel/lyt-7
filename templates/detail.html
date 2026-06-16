@@ -62,6 +62,33 @@
             <p class="detail-text">{{ log['harvest'] }}</p>
         </div>
 
+        {% if log_equipments and log_equipments|length > 0 %}
+            <div class="detail-section">
+                <h3>🎒 使用装备 <span style="font-weight: 400; font-size: 13px; color: #718096;">（本次消耗）</span></h3>
+                <div class="equipment-used-list">
+                    {% for eq in log_equipments %}
+                        <div class="equipment-used-item">
+                            <div class="equipment-used-info">
+                                <span class="equipment-used-name">{{ eq.equipment_name }}</span>
+                                <span class="equipment-used-category">{{ eq.category }}</span>
+                            </div>
+                            <div class="equipment-used-meta">
+                                <span class="equipment-used-qty">数量：{{ eq.quantity }}</span>
+                                {% if eq.notes %}<span class="equipment-used-note">备注：{{ eq.notes }}</span>{% endif %}
+                            </div>
+                            <div class="equipment-used-cost">
+                                ¥{{ eq.usage_cost }}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="equipment-cost-total">
+                    <span>装备消耗合计：</span>
+                    <strong>¥{{ total_equipment_cost }}</strong>
+                </div>
+            </div>
+        {% endif %}
+
         {% if log['next_strategy'] %}
             <div class="detail-section">
                 <h3>💡 下次策略</h3>
