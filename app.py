@@ -318,6 +318,54 @@ def get_upcoming_strategies(conn):
     return result
 
 
+def get_overview_stats(conn):
+    total_logs = conn.execute(
+        'SELECT COUNT(*) as cnt FROM fishing_logs WHERE deleted_at IS NULL'
+    ).fetchone()['cnt']
+
+    active_spots = conn.execute(
+        'SELECT COUNT(DISTINCT spot) as cnt FROM fishing_logs WHERE spot IS NOT NULL AND spot != "" AND deleted_at IS NULL'
+    ).fetchone()['cnt']
+
+    today = datetime.now().date()
+    seven_months_ago = today - timedelta(days=210)
+
+    monthly_counts = conn.execute('''
+        SELECT strftime('%Y-%m', created_at) as month, COUNT(*) as count
+        FROM fishing_logs
+        WHERE deleted_at IS NULL
+          AND created_at >= ?
+        GROUP BY month
+        ORDER BY month DESC
+    ''', (seven_months_ago.strftime('%Y-%m-%d'),)).fetchall()
+
+    monthly_map = {row['month']: row['count'] for row in monthly_counts}
+
+    last_seven_months = []
+    for i in range(6, -1, -1):
+        month_date = today.replace(day=1) - timedelta(days=i * 30)
+        month_str = month_date.strftime('%Y-%m')
+        display_month = month_date.strftime('%m月')
+        last_seven_months.append({
+            'month': month_str,
+            'display': display_month,
+            'count': monthly_map.get(month_str, 0)
+        })
+
+    recent_seven_month_total = sum(m['count'] for m in last_seven_months)
+    avg_per_month = round(recent_seven_month_total / 7, 1) if recent_seven_month_total > 0 else 0
+    max_month_count = max((m['count'] for m in last_seven_months), default=1)
+
+    return {
+        'total_logs': total_logs,
+        'active_spots': active_spots,
+        'last_seven_months': last_seven_months,
+        'avg_per_month': avg_per_month,
+        'seven_month_total': recent_seven_month_total,
+        'max_month_count': max_month_count
+    }
+
+
 @app.route('/')
 def index():
     page = request.args.get('page', 1, type=int)
@@ -337,6 +385,7 @@ def index():
     conn = get_db()
 
     upcoming_strategies = get_upcoming_strategies(conn)
+    overview_stats = get_overview_stats(conn)
 
     count_result = conn.execute('SELECT COUNT(*) as total FROM fishing_logs WHERE deleted_at IS NULL').fetchone()
     total = count_result['total']
@@ -359,7 +408,8 @@ def index():
         total_pages=total_pages,
         sort_by=sort_by,
         sort_label=sort_label,
-        upcoming_strategies=upcoming_strategies
+        upcoming_strategies=upcoming_strategies,
+        overview_stats=overview_stats
     )
 
 

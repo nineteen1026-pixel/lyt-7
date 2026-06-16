@@ -3,6 +3,38 @@
 {% block title %}首页 - 钓点日志{% endblock %}
 
 {% block content %}
+    <div class="overview-bar">
+        <div class="overview-item">
+            <div class="overview-icon">🎣</div>
+            <div class="overview-info">
+                <div class="overview-value">{{ overview_stats.total_logs }}</div>
+                <div class="overview-label">总出钓次数</div>
+            </div>
+        </div>
+        <div class="overview-item">
+            <div class="overview-icon">📍</div>
+            <div class="overview-info">
+                <div class="overview-value">{{ overview_stats.active_spots }}</div>
+                <div class="overview-label">活跃钓点数</div>
+            </div>
+        </div>
+        <div class="overview-item overview-chart-item">
+            <div class="overview-icon">📊</div>
+            <div class="overview-info">
+                <div class="overview-value">{{ overview_stats.avg_per_month }}<span class="overview-unit"> 次/月</span></div>
+                <div class="overview-label">近七月频次</div>
+                <div class="mini-chart">
+                    {% for month in overview_stats.last_seven_months %}
+                        <div class="mini-bar-wrapper">
+                            <div class="mini-bar" style="height: {{ (month.count / overview_stats.max_month_count) * 100 }}%"></div>
+                            <div class="mini-bar-label">{{ month.display }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% if upcoming_strategies %}
         <div class="strategy-reminder-section">
             <div class="page-header">
