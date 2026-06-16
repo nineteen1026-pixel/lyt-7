@@ -1089,6 +1089,169 @@ def delete_spot(spot_id):
     return redirect(url_for('spots_list'))
 
 
+@app.route('/spots/batch-rename', methods=['POST'])
+def batch_rename_spots():
+    spot_ids = request.form.getlist('spot_ids')
+    new_name = request.form.get('new_name', '').strip()
+
+    if not spot_ids:
+        flash('请先选择要修改的钓点！', 'error')
+        return redirect(url_for('spots_list'))
+
+    if not new_name:
+        flash('请输入新的钓点名称！', 'error')
+        return redirect(url_for('spots_list'))
+
+    conn = get_db()
+    try:
+        placeholders = ','.join('?' * len(spot_ids))
+        spots = conn.execute(
+            f'SELECT id, name FROM fishing_spots WHERE id IN ({placeholders}) AND deleted_at IS NULL',
+            spot_ids
+        ).fetchall()
+
+        if not spots:
+            flash('未找到选中的钓点！', 'error')
+            return redirect(url_for('spots_list'))
+
+        old_names = [row['name'] for row in spots]
+
+        existing_spot = conn.execute(
+            'SELECT id, name FROM fishing_spots WHERE name = ? AND deleted_at IS NULL',
+            (new_name,)
+        ).fetchone()
+
+        if existing_spot and str(existing_spot['id']) not in spot_ids:
+            flash(f'名称 "{new_name}" 已存在！', 'error')
+            return redirect(url_for('spots_list'))
+
+        batch_id = str(uuid.uuid4())
+        updated_count = 0
+        log_updated_count = 0
+        invitation_updated_count = 0
+
+        if existing_spot:
+            target_spot_id = existing_spot['id']
+
+            for spot in spots:
+                if spot['id'] == target_spot_id:
+                    continue
+
+                old_name = spot['name']
+
+                log_rows = conn.execute(
+                    'SELECT id, spot FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL',
+                    (old_name,)
+                ).fetchall()
+                for log_row in log_rows:
+                    record_audit_log(conn, log_row['id'], batch_id, 'spot', old_name, new_name)
+                    log_updated_count += 1
+
+                conn.execute(
+                    'UPDATE fishing_logs SET spot = ? WHERE spot = ? AND deleted_at IS NULL',
+                    (new_name, old_name)
+                )
+
+                conn.execute(
+                    'UPDATE fishing_invitations SET spot = ? WHERE spot = ? AND deleted_at IS NULL',
+                    (new_name, old_name)
+                )
+                inv_result = conn.execute('SELECT changes() as cnt').fetchone()
+                invitation_updated_count += inv_result['cnt']
+
+                conn.execute(
+                    'UPDATE spot_ratings SET spot_id = ? WHERE spot_id = ?',
+                    (target_spot_id, spot['id'])
+                )
+
+                conn.execute(
+                    'UPDATE fishing_spots SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    (spot['id'],)
+                )
+                updated_count += 1
+        else:
+            first_spot_id = spots[0]['id']
+            first_old_name = spots[0]['name']
+
+            conn.execute(
+                'UPDATE fishing_spots SET name = ? WHERE id = ?',
+                (new_name, first_spot_id)
+            )
+
+            log_rows = conn.execute(
+                'SELECT id, spot FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL',
+                (first_old_name,)
+            ).fetchall()
+            for log_row in log_rows:
+                record_audit_log(conn, log_row['id'], batch_id, 'spot', first_old_name, new_name)
+                log_updated_count += 1
+
+            conn.execute(
+                'UPDATE fishing_logs SET spot = ? WHERE spot = ? AND deleted_at IS NULL',
+                (new_name, first_old_name)
+            )
+
+            conn.execute(
+                'UPDATE fishing_invitations SET spot = ? WHERE spot = ? AND deleted_at IS NULL',
+                (new_name, first_old_name)
+            )
+            inv_result = conn.execute('SELECT changes() as cnt').fetchone()
+            invitation_updated_count += inv_result['cnt']
+
+            updated_count += 1
+
+            for spot in spots[1:]:
+                old_name = spot['name']
+
+                log_rows = conn.execute(
+                    'SELECT id, spot FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL',
+                    (old_name,)
+                ).fetchall()
+                for log_row in log_rows:
+                    record_audit_log(conn, log_row['id'], batch_id, 'spot', old_name, new_name)
+                    log_updated_count += 1
+
+                conn.execute(
+                    'UPDATE fishing_logs SET spot = ? WHERE spot = ? AND deleted_at IS NULL',
+                    (new_name, old_name)
+                )
+
+                conn.execute(
+                    'UPDATE fishing_invitations SET spot = ? WHERE spot = ? AND deleted_at IS NULL',
+                    (new_name, old_name)
+                )
+                inv_result = conn.execute('SELECT changes() as cnt').fetchone()
+                invitation_updated_count += inv_result['cnt']
+
+                conn.execute(
+                    'UPDATE spot_ratings SET spot_id = ? WHERE spot_id = ?',
+                    (first_spot_id, spot['id'])
+                )
+
+                conn.execute(
+                    'UPDATE fishing_spots SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?',
+                    (spot['id'],)
+                )
+                updated_count += 1
+
+        conn.commit()
+
+        message = f'成功修改 {updated_count} 个钓点名称'
+        if log_updated_count > 0:
+            message += f'，同步更新 {log_updated_count} 条垂钓记录'
+        if invitation_updated_count > 0:
+            message += f'，同步更新 {invitation_updated_count} 条邀约记录'
+        flash(message, 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'批量修改失败：{str(e)}', 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('spots_list'))
+
+
 def parse_harvest_value(harvest_str):
     if not harvest_str:
         return 0

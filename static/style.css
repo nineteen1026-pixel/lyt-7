@@ -4185,6 +4185,152 @@ footer {
     background: #feb2b2;
 }
 
+.batch-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    flex-wrap: wrap;
+    padding: 15px 20px;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, #667eea10, #764ba210);
+    border: 1px solid #667eea30;
+    border-radius: 10px;
+}
+
+.select-all-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    color: #4a5568;
+    cursor: pointer;
+}
+
+.select-all-label input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.batch-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.batch-actions .btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.selected-count {
+    margin-left: auto;
+    font-size: 13px;
+    font-weight: 500;
+    color: #667eea;
+    background: #fff;
+    padding: 5px 12px;
+    border-radius: 12px;
+    border: 1px solid #667eea30;
+}
+
+.item-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.item-checkbox input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.spot-card .batch-checkbox {
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.spot-card.selected {
+    border-color: #667eea;
+    box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+}
+
+.selected-spots-preview {
+    padding: 12px;
+    background: #f7fafc;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #4a5568;
+}
+
+.selected-spots-preview strong {
+    color: #667eea;
+    font-size: 16px;
+}
+
+.warning-box {
+    padding: 15px;
+    background: #fffaf0;
+    border: 1px solid #feebc8;
+    border-radius: 8px;
+    color: #7c2d12;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.warning-box strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+
+.warning-box ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.warning-box li {
+    margin-bottom: 4px;
+}
+
+.form-hint {
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    color: #a0aec0;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+}
+
+@media (max-width: 640px) {
+    .batch-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .selected-count {
+        margin-left: 0;
+        text-align: center;
+    }
+
+    .batch-actions {
+        width: 100%;
+    }
+
+    .batch-actions .btn {
+        flex: 1;
+        text-align: center;
+    }
+}
+
 .quick-chip.chip-zero.active .chip-count {
     background: rgba(255, 255, 255, 0.25);
     color: #fff;

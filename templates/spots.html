@@ -8,7 +8,21 @@
         <div style="display: flex; gap: 10px; flex-wrap: wrap;">
             <a href="{{ url_for('add_spot') }}" class="btn btn-primary">+ 新增钓点</a>
             <button class="btn btn-secondary" id="toggle-map-btn" onclick="toggleMapView()">🗺️ 地图模式</button>
+            <button class="btn btn-secondary" id="toggleBatchBtn" onclick="toggleBatchMode()">☑️ 批量操作</button>
         </div>
+    </div>
+
+    <div class="batch-toolbar" id="batchToolbar" style="display: none;">
+        <label class="select-all-label">
+            <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll()">
+            <span>全选</span>
+        </label>
+        <div class="batch-actions">
+            <button class="btn btn-primary" id="batchRenameBtn" onclick="openBatchRenameModal()" disabled>
+                ✏️ 批量修改名称
+            </button>
+        </div>
+        <div class="selected-count" id="selectedCount">已选择 0 项</div>
     </div>
 
     <div class="filter-bar">
@@ -34,7 +48,12 @@
     {% if spots %}
         <div class="spot-grid">
             {% for spot in spots %}
-                <div class="spot-card">
+                <div class="spot-card" data-spot-id="{{ spot['id'] }}" data-spot-name="{{ spot['name'] }}">
+                    <div class="batch-checkbox" style="display: none;">
+                        <label class="item-checkbox">
+                            <input type="checkbox" class="spot-checkbox" value="{{ spot['id'] }}" onchange="updateSelectionState()">
+                        </label>
+                    </div>
                     <div class="spot-card-header">
                         <div class="spot-title-row">
                             <h3 class="spot-name">
@@ -42,7 +61,7 @@
                             </h3>
                             <button class="favorite-btn {% if spot['is_favorite'] %}favorited{% endif %}"
                                     data-spot-id="{{ spot['id'] }}"
-                                    onclick="toggleFavorite(this)">
+                                    onclick="toggleFavorite(this); event.stopPropagation();">
                                 {% if spot['is_favorite'] %}★{% else %}☆{% endif %}
                             </button>
                         </div>
@@ -99,9 +118,153 @@
     {% endif %}
     </div>
 
+    <div class="modal-overlay" id="batchRenameModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>✏️ 批量修改钓点名称</h3>
+                <button class="modal-close" onclick="closeBatchRenameModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form method="POST" action="{{ url_for('batch_rename_spots') }}" id="batchRenameForm">
+                    <div class="form-group">
+                        <label>选中的钓点数量</label>
+                        <div class="selected-spots-preview" id="selectedSpotsPreview">
+                            已选择 <strong id="selectedCountDisplay">0</strong> 个钓点
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="newSpotName">新名称 <span class="required">*</span></label>
+                        <input type="text" id="newSpotName" name="new_name" placeholder="请输入新的钓点名称" required>
+                        <small class="form-hint">所有选中的钓点将统一修改为该名称</small>
+                    </div>
+                    <div class="form-group">
+                        <div class="warning-box">
+                            <strong>⚠️ 注意：</strong>
+                            <ul>
+                                <li>修改后，所有相关垂钓记录的钓点名称也会同步更新</li>
+                                <li>所有相关邀约记录的钓点名称也会同步更新</li>
+                                <li>修改操作不可撤销，请谨慎操作</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="closeBatchRenameModal()">取消</button>
+                        <button type="submit" class="btn btn-primary" onclick="return confirmBatchRename()">确认修改</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
+    var batchMode = false;
+
+    function toggleBatchMode() {
+        batchMode = !batchMode;
+        var toolbar = document.getElementById('batchToolbar');
+        var checkboxes = document.querySelectorAll('.batch-checkbox');
+        var btn = document.getElementById('toggleBatchBtn');
+
+        if (batchMode) {
+            toolbar.style.display = 'flex';
+            checkboxes.forEach(function(cb) {
+                cb.style.display = 'block';
+            });
+            btn.classList.add('active');
+            btn.textContent = '✖️ 取消批量';
+        } else {
+            toolbar.style.display = 'none';
+            checkboxes.forEach(function(cb) {
+                cb.style.display = 'none';
+            });
+            btn.classList.remove('active');
+            btn.textContent = '☑️ 批量操作';
+            document.querySelectorAll('.spot-checkbox').forEach(function(cb) {
+                cb.checked = false;
+            });
+            updateSelectionState();
+        }
+    }
+
+    function toggleSelectAll() {
+        var selectAll = document.getElementById('selectAllCheckbox');
+        var checkboxes = document.querySelectorAll('.spot-checkbox');
+        checkboxes.forEach(function(cb) {
+            cb.checked = selectAll.checked;
+        });
+        updateSelectionState();
+    }
+
+    function updateSelectionState() {
+        var checkedBoxes = document.querySelectorAll('.spot-checkbox:checked');
+        var count = checkedBoxes.length;
+
+        document.getElementById('selectedCount').textContent = '已选择 ' + count + ' 项';
+        document.getElementById('selectedCountDisplay').textContent = count;
+
+        var batchRenameBtn = document.getElementById('batchRenameBtn');
+        if (batchRenameBtn) {
+            batchRenameBtn.disabled = count === 0;
+        }
+
+        var selectAll = document.getElementById('selectAllCheckbox');
+        var total = document.querySelectorAll('.spot-checkbox').length;
+        if (selectAll) {
+            selectAll.checked = total > 0 && count === total;
+            selectAll.indeterminate = count > 0 && count < total;
+        }
+    }
+
+    function openBatchRenameModal() {
+        var checkedBoxes = document.querySelectorAll('.spot-checkbox:checked');
+        if (checkedBoxes.length === 0) {
+            alert('请先选择要修改的钓点！');
+            return;
+        }
+
+        var form = document.getElementById('batchRenameForm');
+        form.querySelectorAll('input[name="spot_ids"]').forEach(function(input) {
+            input.remove();
+        });
+
+        checkedBoxes.forEach(function(cb) {
+            var hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'spot_ids';
+            hiddenInput.value = cb.value;
+            form.appendChild(hiddenInput);
+        });
+
+        document.getElementById('batchRenameModal').style.display = 'flex';
+        document.getElementById('newSpotName').focus();
+    }
+
+    function closeBatchRenameModal() {
+        document.getElementById('batchRenameModal').style.display = 'none';
+        document.getElementById('newSpotName').value = '';
+    }
+
+    function confirmBatchRename() {
+        var newName = document.getElementById('newSpotName').value.trim();
+        if (!newName) {
+            alert('请输入新的钓点名称！');
+            return false;
+        }
+
+        var count = document.querySelectorAll('.spot-checkbox:checked').length;
+        return confirm('确定要将选中的 ' + count + ' 个钓点名称修改为 "' + newName + '" 吗？\n所有相关的垂钓记录和邀约记录也会同步更新。');
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            if (document.getElementById('batchRenameModal').style.display === 'flex') {
+                closeBatchRenameModal();
+            }
+        }
+    });
+
     function toggleFavorite(btn) {
         const spotId = btn.dataset.spotId;
         fetch(`/spots/${spotId}/favorite`, {
