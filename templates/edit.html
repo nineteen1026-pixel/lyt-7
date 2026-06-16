@@ -92,14 +92,58 @@
                 </div>
             </div>
 
-            <div class="form-group">
+            <div class="form-group full-width">
                 <label for="fish_species">鱼种 <span class="required">*</span></label>
-                <input type="text" id="fish_species" name="fish_species" placeholder="例如：鲫鱼、鲤鱼、白条" required value="{{ log['fish_species'] }}">
+                <div class="autocomplete-wrapper">
+                    <input type="text" id="fish_species" name="fish_species" placeholder="输入鱼种搜索历史..." autocomplete="off" required value="{{ log['fish_species'] }}">
+                    <div id="species-suggestions" class="autocomplete-suggestions"></div>
+                </div>
+                <div class="quick-pick-panel" id="species-panel">
+                    <div class="quick-pick-header">
+                        <span class="quick-pick-label">常用鱼种（点击选择）<span class="quick-pick-spot-hint" id="species-spot-hint"></span></span>
+                        <button type="button" class="btn btn-small btn-refresh-candidates" onclick="refreshCandidates()" title="刷新候选项">🔄</button>
+                    </div>
+                    <div class="quick-pick-list" id="species-pick-list">
+                        {% if common_species %}
+                            {% for sp in common_species %}
+                                <span class="quick-chip" onclick="toggleSpecies('{{ sp.name|e }}')" data-name="{{ sp.name|e }}">
+                                    {{ sp.name|e }}
+                                    {% if sp.count > 0 %}<span class="chip-count">{{ sp.count }}</span>{% endif %}
+                                </span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="empty-hint-inline">暂无历史数据，输入鱼种后将自动积累</span>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             <div class="form-group full-width">
                 <label for="harvest">收获情况 <span class="required">*</span></label>
-                <textarea id="harvest" name="harvest" rows="3" placeholder="例如：鲫鱼5条约2斤，白条若干" required>{{ log['harvest'] }}</textarea>
+                <div class="autocomplete-wrapper">
+                    <textarea id="harvest" name="harvest" rows="3" placeholder="输入收获搜索历史，聚焦可查看历史记录..." required>{{ log['harvest'] }}</textarea>
+                    <div id="harvest-suggestions" class="autocomplete-suggestions"></div>
+                </div>
+                <div class="quick-pick-panel" id="harvest-panel">
+                    <div class="quick-pick-header">
+                        <span class="quick-pick-label">收获模板（点击填充）<span class="quick-pick-spot-hint" id="harvest-spot-hint"></span></span>
+                        <button type="button" class="btn btn-small btn-refresh-candidates" onclick="refreshCandidates()" title="刷新候选项">🔄</button>
+                    </div>
+                    <div class="quick-pick-list" id="harvest-pick-list">
+                        {% if harvest_templates %}
+                            {% for tpl in harvest_templates %}
+                                <span class="quick-chip{% if tpl.type == 'zero' %} chip-zero{% endif %}"
+                                      onclick="applyHarvestTemplate('{{ tpl.text|e }}', '{{ tpl.species|e }}')"
+                                      data-text="{{ tpl.text|e }}" data-species="{{ tpl.species|e }}">
+                                    {{ tpl.text|e }}
+                                    {% if tpl.count > 0 %}<span class="chip-count">{{ tpl.count }}</span>{% endif %}
+                                </span>
+                            {% endfor %}
+                        {% else %}
+                            <span class="empty-hint-inline">暂无历史数据，保存记录后将自动提取模板</span>
+                        {% endif %}
+                    </div>
+                </div>
             </div>
 
             <div class="form-group full-width">
@@ -122,6 +166,7 @@
     <script>
     var spotSearchTimer = null;
     var spotCache = [];
+    var currentSpot = '{{ log["spot"]|e }}';
 
     document.getElementById('spot').addEventListener('input', function(e) {
         clearTimeout(spotSearchTimer);
@@ -136,9 +181,17 @@
         searchSpots(val);
     });
 
+    document.getElementById('spot').addEventListener('change', function(e) {
+        var newSpot = e.target.value.trim();
+        if (newSpot !== currentSpot) {
+            currentSpot = newSpot;
+            loadCandidatesBySpot(currentSpot);
+        }
+    });
+
     document.addEventListener('click', function(e) {
         var wrapper = document.querySelector('.spot-autocomplete-wrapper');
-        if (!wrapper.contains(e.target)) {
+        if (wrapper && !wrapper.contains(e.target)) {
             document.getElementById('spot-suggestions').style.display = 'none';
         }
     });
@@ -197,6 +250,96 @@
             document.getElementById('bait').value = spot.bait;
         }
         document.getElementById('spot-suggestions').style.display = 'none';
+        var newSpot = spot.name;
+        if (newSpot !== currentSpot) {
+            currentSpot = newSpot;
+            loadCandidatesBySpot(currentSpot);
+        }
+    }
+
+    function loadCandidatesBySpot(spot) {
+        var url = '/api/candidates/by-spot';
+        if (spot) {
+            url += '?spot=' + encodeURIComponent(spot);
+        }
+        var speciesPanel = document.getElementById('species-panel');
+        var harvestPanel = document.getElementById('harvest-panel');
+        if (speciesPanel) speciesPanel.classList.add('candidates-loading');
+        if (harvestPanel) harvestPanel.classList.add('candidates-loading');
+
+        fetch(url)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success && data.data) {
+                    if (data.data.species) {
+                        renderSpeciesChips(data.data.species);
+                    }
+                    if (data.data.harvest) {
+                        renderHarvestChips(data.data.harvest);
+                    }
+                    updateSpotHints(spot);
+                }
+            })
+            .catch(function() {})
+            .finally(function() {
+                if (speciesPanel) speciesPanel.classList.remove('candidates-loading');
+                if (harvestPanel) harvestPanel.classList.remove('candidates-loading');
+            });
+    }
+
+    function renderSpeciesChips(species) {
+        var listEl = document.getElementById('species-pick-list');
+        if (!species || species.length === 0) {
+            listEl.innerHTML = '<span class="empty-hint-inline">暂无历史数据，输入鱼种后将自动积累</span>';
+            return;
+        }
+        var html = '';
+        species.forEach(function(sp) {
+            html += '<span class="quick-chip" onclick="toggleSpecies(\'' + escapeJs(sp.name) + '\')" data-name="' + escapeHtml(sp.name) + '">';
+            html += escapeHtml(sp.name);
+            if (sp.count > 0) html += '<span class="chip-count">' + sp.count + '</span>';
+            html += '</span>';
+        });
+        listEl.innerHTML = html;
+        syncSpeciesChips();
+    }
+
+    function renderHarvestChips(templates) {
+        var listEl = document.getElementById('harvest-pick-list');
+        if (!templates || templates.length === 0) {
+            listEl.innerHTML = '<span class="empty-hint-inline">暂无历史数据，保存记录后将自动提取模板</span>';
+            return;
+        }
+        var html = '';
+        templates.forEach(function(tpl) {
+            var cls = tpl.type === 'zero' ? ' chip-zero' : '';
+            html += '<span class="quick-chip' + cls + '" onclick="applyHarvestTemplate(\'' + escapeJs(tpl.text) + '\', \'' + escapeJs(tpl.species || '') + '\')" data-text="' + escapeHtml(tpl.text) + '" data-species="' + escapeHtml(tpl.species || '') + '">';
+            html += escapeHtml(tpl.text);
+            if (tpl.count > 0) html += '<span class="chip-count">' + tpl.count + '</span>';
+            html += '</span>';
+        });
+        listEl.innerHTML = html;
+    }
+
+    function updateSpotHints(spot) {
+        var speciesHint = document.getElementById('species-spot-hint');
+        var harvestHint = document.getElementById('harvest-spot-hint');
+        if (spot) {
+            if (speciesHint) speciesHint.textContent = ' — ' + spot;
+            if (harvestHint) harvestHint.textContent = ' — ' + spot;
+        } else {
+            if (speciesHint) speciesHint.textContent = '';
+            if (harvestHint) harvestHint.textContent = '';
+        }
+    }
+
+    function refreshCandidates() {
+        loadCandidatesBySpot(currentSpot);
+    }
+
+    function escapeJs(str) {
+        if (!str) return '';
+        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
     }
 
     function handleBaitSelect() {
@@ -327,5 +470,235 @@
         div.appendChild(document.createTextNode(str || ''));
         return div.innerHTML;
     }
+
+    var speciesSearchTimer = null;
+    var speciesCache = [];
+
+    document.getElementById('fish_species').addEventListener('input', function(e) {
+        syncSpeciesChips();
+        clearTimeout(speciesSearchTimer);
+        var val = e.target.value.trim();
+        var lastPart = val.split(/[、,，/；;]/).pop().trim();
+        speciesSearchTimer = setTimeout(function() {
+            searchSpecies(lastPart);
+        }, 200);
+    });
+
+    document.getElementById('fish_species').addEventListener('focus', function(e) {
+        var val = e.target.value.trim();
+        var lastPart = val.split(/[、,，/；;]/).pop().trim();
+        searchSpecies(lastPart);
+    });
+
+    function searchSpecies(keyword) {
+        var url = '/api/species/search';
+        if (keyword) {
+            url += '?q=' + encodeURIComponent(keyword);
+        }
+        fetch(url)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success && data.data && data.data.length > 0) {
+                    var current = document.getElementById('fish_species').value.trim();
+                    var existingParts = current ? current.split(/[、,，/；;]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+                    var filtered = data.data.filter(function(item) {
+                        return existingParts.indexOf(item.name) < 0;
+                    });
+                    if (filtered.length > 0) {
+                        speciesCache = filtered;
+                        renderSpeciesSuggestions(filtered);
+                    } else {
+                        speciesCache = [];
+                        document.getElementById('species-suggestions').style.display = 'none';
+                    }
+                } else {
+                    speciesCache = [];
+                    document.getElementById('species-suggestions').style.display = 'none';
+                }
+            })
+            .catch(function() {
+                document.getElementById('species-suggestions').style.display = 'none';
+            });
+    }
+
+    function renderSpeciesSuggestions(items) {
+        var listEl = document.getElementById('species-suggestions');
+        var html = '';
+        items.forEach(function(item, idx) {
+            html += '<div class="autocomplete-item" onclick="selectSpecies(' + idx + ')">';
+            html += '<span class="autocomplete-name">' + escapeHtml(item.name) + '</span>';
+            if (item.count > 0) {
+                html += '<span class="autocomplete-count">' + item.count + '次</span>';
+            }
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+        listEl.style.display = 'block';
+    }
+
+    function selectSpecies(idx) {
+        var item = speciesCache[idx];
+        if (!item) return;
+        var input = document.getElementById('fish_species');
+        var current = input.value.trim();
+        var parts = current ? current.split(/[、,，/；;]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        if (parts.indexOf(item.name) < 0) {
+            parts.push(item.name);
+        }
+        input.value = parts.join('、');
+        document.getElementById('species-suggestions').style.display = 'none';
+        syncSpeciesChips();
+    }
+
+    var harvestSearchTimer = null;
+    var harvestCache = [];
+
+    document.getElementById('harvest').addEventListener('input', function(e) {
+        clearTimeout(harvestSearchTimer);
+        var val = e.target.value.trim();
+        harvestSearchTimer = setTimeout(function() {
+            searchHarvest(val);
+        }, 300);
+    });
+
+    document.getElementById('harvest').addEventListener('focus', function(e) {
+        var val = e.target.value.trim();
+        searchHarvest(val);
+    });
+
+    function searchHarvest(keyword) {
+        var url = '/api/harvest/search';
+        if (keyword) {
+            url += '?q=' + encodeURIComponent(keyword);
+        }
+        fetch(url)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success && data.data && data.data.length > 0) {
+                    var currentHarvest = document.getElementById('harvest').value.trim();
+                    var filtered = data.data.filter(function(item) {
+                        return item.text !== currentHarvest;
+                    });
+                    if (filtered.length > 0) {
+                        harvestCache = filtered;
+                        renderHarvestSuggestions(filtered);
+                    } else {
+                        harvestCache = [];
+                        document.getElementById('harvest-suggestions').style.display = 'none';
+                    }
+                } else {
+                    harvestCache = [];
+                    document.getElementById('harvest-suggestions').style.display = 'none';
+                }
+            })
+            .catch(function() {
+                document.getElementById('harvest-suggestions').style.display = 'none';
+            });
+    }
+
+    function renderHarvestSuggestions(items) {
+        var listEl = document.getElementById('harvest-suggestions');
+        var html = '';
+        items.forEach(function(item, idx) {
+            var cls = item.type === 'zero' ? ' autocomplete-item-zero' : '';
+            html += '<div class="autocomplete-item' + cls + '" onclick="selectHarvest(' + idx + ')">';
+            html += '<span class="autocomplete-name">' + escapeHtml(item.text) + '</span>';
+            if (item.count > 0) {
+                html += '<span class="autocomplete-count">' + item.count + '次</span>';
+            }
+            html += '</div>';
+        });
+        listEl.innerHTML = html;
+        listEl.style.display = 'block';
+    }
+
+    function selectHarvest(idx) {
+        var item = harvestCache[idx];
+        if (!item) return;
+        document.getElementById('harvest').value = item.text;
+        document.getElementById('harvest-suggestions').style.display = 'none';
+        if (item.species && item.species.trim()) {
+            var spInput = document.getElementById('fish_species');
+            if (!spInput.value.trim()) {
+                spInput.value = item.species;
+                syncSpeciesChips();
+            }
+        }
+    }
+
+    document.addEventListener('click', function(e) {
+        var speciesWrapper = document.getElementById('fish_species').closest('.autocomplete-wrapper');
+        if (speciesWrapper && !speciesWrapper.contains(e.target)) {
+            document.getElementById('species-suggestions').style.display = 'none';
+        }
+        var harvestWrapper = document.getElementById('harvest').closest('.autocomplete-wrapper');
+        if (harvestWrapper && !harvestWrapper.contains(e.target)) {
+            document.getElementById('harvest-suggestions').style.display = 'none';
+        }
+    });
+
+    function toggleSpecies(name) {
+        var input = document.getElementById('fish_species');
+        var current = input.value.trim();
+        var parts = current ? current.split(/[、,，/；;]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        var idx = parts.indexOf(name);
+        var chip = document.querySelector('#species-pick-list .quick-chip[data-name="' + escapeHtml(name) + '"]');
+        if (idx >= 0) {
+            parts.splice(idx, 1);
+            if (chip) chip.classList.remove('active');
+        } else {
+            parts.push(name);
+            if (chip) chip.classList.add('active');
+        }
+        input.value = parts.join('、');
+        syncSpeciesChips();
+    }
+
+    function syncSpeciesChips() {
+        var input = document.getElementById('fish_species');
+        var current = input.value.trim();
+        var parts = current ? current.split(/[、,，/；;]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        var chips = document.querySelectorAll('#species-pick-list .quick-chip');
+        chips.forEach(function(chip) {
+            var name = chip.getAttribute('data-name');
+            if (parts.indexOf(name) >= 0) {
+                chip.classList.add('active');
+            } else {
+                chip.classList.remove('active');
+            }
+        });
+    }
+
+    function applyHarvestTemplate(text, species) {
+        document.getElementById('harvest').value = text;
+        var harvestChips = document.querySelectorAll('#harvest-pick-list .quick-chip');
+        harvestChips.forEach(function(c) { c.classList.remove('active'); });
+        var targetChip = document.querySelector('#harvest-pick-list .quick-chip[data-text="' + escapeHtml(text) + '"]');
+        if (targetChip) targetChip.classList.add('active');
+        if (species && species.trim()) {
+            var spInput = document.getElementById('fish_species');
+            if (!spInput.value.trim()) {
+                spInput.value = species;
+                syncSpeciesChips();
+            }
+        }
+    }
+
+    function syncHarvestChip() {
+        var currentHarvest = document.getElementById('harvest').value.trim();
+        if (!currentHarvest) return;
+        var harvestChips = document.querySelectorAll('#harvest-pick-list .quick-chip');
+        harvestChips.forEach(function(c) {
+            if (c.getAttribute('data-text') === currentHarvest) {
+                c.classList.add('active');
+            }
+        });
+    }
+
+    (function() {
+        syncSpeciesChips();
+        syncHarvestChip();
+        updateSpotHints(currentSpot);
+    })();
     </script>
 {% endblock %}

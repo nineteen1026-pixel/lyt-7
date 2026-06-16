@@ -219,6 +219,13 @@ def edit_log(log_id):
     conn = get_db()
     log = conn.execute('SELECT * FROM fishing_logs WHERE id = ?', (log_id,)).fetchone()
     bait_list = get_all_baits(conn)
+    common_species = get_common_species(conn)
+    harvest_templates = get_harvest_templates(conn)
+
+    if not common_species:
+        common_species = [{'name': s, 'count': 0} for s in get_default_species_list()]
+    if not harvest_templates:
+        harvest_templates = [{'text': t['text'], 'type': t['type'], 'count': 0, 'species': ''} for t in get_default_harvest_templates()]
 
     if log is None:
         conn.close()
@@ -281,7 +288,8 @@ def edit_log(log_id):
     conn.close()
     return render_template('edit.html', log=log, bait_list=bait_list,
                            page=page, sort_by=sort_by, per_page=per_page,
-                           default_city=WEATHER_API_CONFIG['city'])
+                           default_city=WEATHER_API_CONFIG['city'],
+                           common_species=common_species, harvest_templates=harvest_templates)
 
 
 def get_upcoming_strategies(conn):
@@ -417,6 +425,13 @@ def index():
 def add_log():
     conn = get_db()
     bait_list = get_all_baits(conn)
+    common_species = get_common_species(conn)
+    harvest_templates = get_harvest_templates(conn)
+
+    if not common_species:
+        common_species = [{'name': s, 'count': 0} for s in get_default_species_list()]
+    if not harvest_templates:
+        harvest_templates = [{'text': t['text'], 'type': t['type'], 'count': 0, 'species': ''} for t in get_default_harvest_templates()]
 
     if request.method == 'POST':
         spot = request.form['spot'].strip()
@@ -445,7 +460,8 @@ def add_log():
             return redirect(url_for('index'))
 
     conn.close()
-    return render_template('add.html', bait_list=bait_list, default_city=WEATHER_API_CONFIG['city'])
+    return render_template('add.html', bait_list=bait_list, default_city=WEATHER_API_CONFIG['city'],
+                           common_species=common_species, harvest_templates=harvest_templates)
 
 
 @app.route('/log/<int:log_id>')
@@ -1440,6 +1456,85 @@ def get_all_baits(conn):
     return [dict(b) for b in baits]
 
 
+def get_common_species(conn, limit=15):
+    rows = conn.execute('''
+        SELECT fish_species FROM fishing_logs
+        WHERE fish_species IS NOT NULL AND fish_species != '' AND deleted_at IS NULL
+    ''').fetchall()
+    species_counter = {}
+    for row in rows:
+        species_str = row['fish_species'].strip()
+        if not species_str:
+            continue
+        parts = re.split(r'[、,，/；;]', species_str)
+        for part in parts:
+            part = part.strip()
+            if part:
+                species_counter[part] = species_counter.get(part, 0) + 1
+    sorted_species = sorted(species_counter.items(), key=lambda x: x[1], reverse=True)
+    return [{'name': name, 'count': count} for name, count in sorted_species[:limit]]
+
+
+def get_harvest_templates(conn, limit=15):
+    rows = conn.execute('''
+        SELECT harvest, fish_species, COUNT(*) as use_count
+        FROM fishing_logs
+        WHERE harvest IS NOT NULL AND harvest != '' AND deleted_at IS NULL
+        GROUP BY harvest
+        ORDER BY use_count DESC, created_at DESC
+        LIMIT ?
+    ''', (limit * 3,)).fetchall()
+
+    templates = []
+    seen_patterns = set()
+
+    for row in rows:
+        harvest = row['harvest'].strip()
+        if not harvest:
+            continue
+
+        harvest_val = parse_harvest_value(harvest)
+        is_zero = harvest_val == 0
+
+        pattern_key = harvest
+        if pattern_key in seen_patterns:
+            continue
+        seen_patterns.add(pattern_key)
+
+        template_type = 'zero' if is_zero else 'normal'
+
+        templates.append({
+            'text': harvest,
+            'count': row['use_count'],
+            'type': template_type,
+            'species': row['fish_species'] or ''
+        })
+
+    templates.sort(key=lambda x: x['count'], reverse=True)
+    return templates[:limit]
+
+
+def get_default_species_list():
+    return [
+        '鲫鱼', '鲤鱼', '草鱼', '鲢鱼', '鳙鱼',
+        '白条', '马口', '黄颡鱼', '黑鱼', '鲶鱼',
+        '罗非鱼', '鲈鱼', '鳜鱼', '青鱼', '翘嘴'
+    ]
+
+
+def get_default_harvest_templates():
+    return [
+        {'text': '空军', 'type': 'zero'},
+        {'text': '白板', 'type': 'zero'},
+        {'text': '打龟', 'type': 'zero'},
+        {'text': '白条若干', 'type': 'normal'},
+        {'text': '鲫鱼5条约2斤', 'type': 'normal'},
+        {'text': '鲤鱼1条约3斤', 'type': 'normal'},
+        {'text': '草鱼2条约5斤', 'type': 'normal'},
+        {'text': '杂鱼若干约1斤', 'type': 'normal'},
+    ]
+
+
 def get_bait_usage_stats(conn, bait_name):
     logs = conn.execute(
         'SELECT harvest FROM fishing_logs WHERE bait = ? AND deleted_at IS NULL',
@@ -1724,6 +1819,184 @@ def api_spots_search():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         conn.close()
+
+
+@app.route('/api/species/search')
+def api_species_search():
+    conn = get_db()
+    try:
+        keyword = request.args.get('q', '').strip()
+        rows = conn.execute('''
+            SELECT fish_species FROM fishing_logs
+            WHERE fish_species IS NOT NULL AND fish_species != '' AND deleted_at IS NULL
+        ''').fetchall()
+        species_counter = {}
+        for row in rows:
+            species_str = row['fish_species'].strip()
+            if not species_str:
+                continue
+            parts = re.split(r'[、,，/；;]', species_str)
+            for part in parts:
+                part = part.strip()
+                if part:
+                    species_counter[part] = species_counter.get(part, 0) + 1
+        if keyword:
+            filtered = {k: v for k, v in species_counter.items() if keyword in k}
+        else:
+            filtered = species_counter
+        sorted_species = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
+        result = [{'name': name, 'count': count} for name, count in sorted_species[:20]]
+        return jsonify({'success': True, 'data': result})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/harvest/search')
+def api_harvest_search():
+    conn = get_db()
+    try:
+        keyword = request.args.get('q', '').strip()
+        query = '''
+            SELECT harvest, fish_species, COUNT(*) as use_count
+            FROM fishing_logs
+            WHERE harvest IS NOT NULL AND harvest != '' AND deleted_at IS NULL
+        '''
+        params = []
+        if keyword:
+            query += ' AND harvest LIKE ?'
+            params.append(f'%{keyword}%')
+        query += ' GROUP BY harvest ORDER BY use_count DESC, created_at DESC LIMIT 20'
+        rows = conn.execute(query, params).fetchall()
+        templates = []
+        seen = set()
+        for row in rows:
+            harvest = row['harvest'].strip()
+            if not harvest or harvest in seen:
+                continue
+            seen.add(harvest)
+            harvest_val = parse_harvest_value(harvest)
+            template_type = 'zero' if harvest_val == 0 else 'normal'
+            templates.append({
+                'text': harvest,
+                'count': row['use_count'],
+                'type': template_type,
+                'species': row['fish_species'] or ''
+            })
+        return jsonify({'success': True, 'data': templates})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/candidates/by-spot')
+def api_candidates_by_spot():
+    conn = get_db()
+    try:
+        spot = request.args.get('spot', '').strip()
+        result_species = get_common_species(conn, limit=15)
+        result_harvest = get_harvest_templates(conn, limit=15)
+
+        if spot:
+            spot_species = get_common_species_by_spot(conn, spot, limit=15)
+            spot_harvest = get_harvest_templates_by_spot(conn, spot, limit=10)
+
+            if spot_species:
+                seen = set()
+                merged = []
+                for s in spot_species:
+                    if s['name'] not in seen:
+                        seen.add(s['name'])
+                        merged.append(s)
+                for s in result_species:
+                    if s['name'] not in seen:
+                        seen.add(s['name'])
+                        merged.append(s)
+                result_species = merged[:15]
+
+            if spot_harvest:
+                seen = set()
+                merged = []
+                for h in spot_harvest:
+                    if h['text'] not in seen:
+                        seen.add(h['text'])
+                        merged.append(h)
+                for h in result_harvest:
+                    if h['text'] not in seen:
+                        seen.add(h['text'])
+                        merged.append(h)
+                result_harvest = merged[:15]
+
+        if not result_species:
+            result_species = [{'name': s, 'count': 0} for s in get_default_species_list()]
+        if not result_harvest:
+            result_harvest = [{'text': t['text'], 'type': t['type'], 'count': 0, 'species': ''} for t in get_default_harvest_templates()]
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'species': result_species,
+                'harvest': result_harvest
+            }
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+    finally:
+        conn.close()
+
+
+def get_common_species_by_spot(conn, spot, limit=15):
+    rows = conn.execute('''
+        SELECT fish_species FROM fishing_logs
+        WHERE spot = ? AND fish_species IS NOT NULL AND fish_species != '' AND deleted_at IS NULL
+    ''', (spot,)).fetchall()
+    species_counter = {}
+    for row in rows:
+        species_str = row['fish_species'].strip()
+        if not species_str:
+            continue
+        parts = re.split(r'[、,，/；;]', species_str)
+        for part in parts:
+            part = part.strip()
+            if part:
+                species_counter[part] = species_counter.get(part, 0) + 1
+    sorted_species = sorted(species_counter.items(), key=lambda x: x[1], reverse=True)
+    return [{'name': name, 'count': count} for name, count in sorted_species[:limit]]
+
+
+def get_harvest_templates_by_spot(conn, spot, limit=10):
+    rows = conn.execute('''
+        SELECT harvest, fish_species, COUNT(*) as use_count
+        FROM fishing_logs
+        WHERE spot = ? AND harvest IS NOT NULL AND harvest != '' AND deleted_at IS NULL
+        GROUP BY harvest
+        ORDER BY use_count DESC, created_at DESC
+        LIMIT ?
+    ''', (spot, limit * 3)).fetchall()
+
+    templates = []
+    seen_patterns = set()
+    for row in rows:
+        harvest = row['harvest'].strip()
+        if not harvest:
+            continue
+        harvest_val = parse_harvest_value(harvest)
+        is_zero = harvest_val == 0
+        pattern_key = harvest
+        if pattern_key in seen_patterns:
+            continue
+        seen_patterns.add(pattern_key)
+        template_type = 'zero' if is_zero else 'normal'
+        templates.append({
+            'text': harvest,
+            'count': row['use_count'],
+            'type': template_type,
+            'species': row['fish_species'] or ''
+        })
+    templates.sort(key=lambda x: x['count'], reverse=True)
+    return templates[:limit]
 
 
 @app.route('/search')
