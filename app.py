@@ -222,11 +222,6 @@ def edit_log(log_id):
     common_species = get_common_species(conn)
     harvest_templates = get_harvest_templates(conn)
 
-    if not common_species:
-        common_species = [{'name': s, 'count': 0} for s in get_default_species_list()]
-    if not harvest_templates:
-        harvest_templates = [{'text': t['text'], 'type': t['type'], 'count': 0, 'species': ''} for t in get_default_harvest_templates()]
-
     if log is None:
         conn.close()
         flash('记录不存在！', 'error')
@@ -427,11 +422,6 @@ def add_log():
     bait_list = get_all_baits(conn)
     common_species = get_common_species(conn)
     harvest_templates = get_harvest_templates(conn)
-
-    if not common_species:
-        common_species = [{'name': s, 'count': 0} for s in get_default_species_list()]
-    if not harvest_templates:
-        harvest_templates = [{'text': t['text'], 'type': t['type'], 'count': 0, 'species': ''} for t in get_default_harvest_templates()]
 
     if request.method == 'POST':
         spot = request.form['spot'].strip()
@@ -1928,11 +1918,6 @@ def api_candidates_by_spot():
                         seen.add(h['text'])
                         merged.append(h)
                 result_harvest = merged[:15]
-
-        if not result_species:
-            result_species = [{'name': s, 'count': 0} for s in get_default_species_list()]
-        if not result_harvest:
-            result_harvest = [{'text': t['text'], 'type': t['type'], 'count': 0, 'species': ''} for t in get_default_harvest_templates()]
 
         return jsonify({
             'success': True,

@@ -103,7 +103,7 @@
                     <div class="quick-pick-list" id="species-pick-list">
                         {% if common_species %}
                             {% for sp in common_species %}
-                                <span class="quick-chip" onclick="toggleSpecies('{{ sp.name|e }}')" data-name="{{ sp.name|e }}">
+                                <span class="quick-chip" data-name="{{ sp.name|e }}">
                                     {{ sp.name|e }}
                                     {% if sp.count > 0 %}<span class="chip-count">{{ sp.count }}</span>{% endif %}
                                 </span>
@@ -130,7 +130,6 @@
                         {% if harvest_templates %}
                             {% for tpl in harvest_templates %}
                                 <span class="quick-chip{% if tpl.type == 'zero' %} chip-zero{% endif %}"
-                                      onclick="applyHarvestTemplate('{{ tpl.text|e }}', '{{ tpl.species|e }}')"
                                       data-text="{{ tpl.text|e }}" data-species="{{ tpl.species|e }}">
                                     {{ tpl.text|e }}
                                     {% if tpl.count > 0 %}<span class="chip-count">{{ tpl.count }}</span>{% endif %}
@@ -292,7 +291,7 @@
         }
         var html = '';
         species.forEach(function(sp) {
-            html += '<span class="quick-chip" onclick="toggleSpecies(\'' + escapeJs(sp.name) + '\')" data-name="' + escapeHtml(sp.name) + '">';
+            html += '<span class="quick-chip" data-name="' + escapeHtml(sp.name) + '">';
             html += escapeHtml(sp.name);
             if (sp.count > 0) html += '<span class="chip-count">' + sp.count + '</span>';
             html += '</span>';
@@ -310,7 +309,7 @@
         var html = '';
         templates.forEach(function(tpl) {
             var cls = tpl.type === 'zero' ? ' chip-zero' : '';
-            html += '<span class="quick-chip' + cls + '" onclick="applyHarvestTemplate(\'' + escapeJs(tpl.text) + '\', \'' + escapeJs(tpl.species || '') + '\')" data-text="' + escapeHtml(tpl.text) + '" data-species="' + escapeHtml(tpl.species || '') + '">';
+            html += '<span class="quick-chip' + cls + '" data-text="' + escapeHtml(tpl.text) + '" data-species="' + escapeHtml(tpl.species || '') + '">';
             html += escapeHtml(tpl.text);
             if (tpl.count > 0) html += '<span class="chip-count">' + tpl.count + '</span>';
             html += '</span>';
@@ -334,10 +333,40 @@
         loadCandidatesBySpot(currentSpot);
     }
 
-    function escapeJs(str) {
-        if (!str) return '';
-        return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
-    }
+    document.getElementById('species-pick-list').addEventListener('click', function(e) {
+        var chip = e.target.closest('.quick-chip');
+        if (!chip || !chip.dataset.name) return;
+        var name = chip.dataset.name;
+        var input = document.getElementById('fish_species');
+        var current = input.value.trim();
+        var parts = current ? current.split(/[、,，/；;]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        var idx = parts.indexOf(name);
+        if (idx >= 0) {
+            parts.splice(idx, 1);
+        } else {
+            parts.push(name);
+        }
+        input.value = parts.join('、');
+        syncSpeciesChips();
+    });
+
+    document.getElementById('harvest-pick-list').addEventListener('click', function(e) {
+        var chip = e.target.closest('.quick-chip');
+        if (!chip || !chip.dataset.text) return;
+        var text = chip.dataset.text;
+        var species = chip.dataset.species || '';
+        document.getElementById('harvest').value = text;
+        var harvestChips = document.querySelectorAll('#harvest-pick-list .quick-chip');
+        harvestChips.forEach(function(c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        if (species && species.trim()) {
+            var spInput = document.getElementById('fish_species');
+            if (!spInput.value.trim()) {
+                spInput.value = species;
+                syncSpeciesChips();
+            }
+        }
+    });
 
     function handleBaitSelect() {
         var select = document.getElementById('bait-select');
@@ -639,13 +668,10 @@
         var current = input.value.trim();
         var parts = current ? current.split(/[、,，/；;]/).map(function(s) { return s.trim(); }).filter(Boolean) : [];
         var idx = parts.indexOf(name);
-        var chip = document.querySelector('#species-pick-list .quick-chip[data-name="' + escapeHtml(name) + '"]');
         if (idx >= 0) {
             parts.splice(idx, 1);
-            if (chip) chip.classList.remove('active');
         } else {
             parts.push(name);
-            if (chip) chip.classList.add('active');
         }
         input.value = parts.join('、');
         syncSpeciesChips();
@@ -670,8 +696,9 @@
         document.getElementById('harvest').value = text;
         var harvestChips = document.querySelectorAll('#harvest-pick-list .quick-chip');
         harvestChips.forEach(function(c) { c.classList.remove('active'); });
-        var targetChip = document.querySelector('#harvest-pick-list .quick-chip[data-text="' + escapeHtml(text) + '"]');
-        if (targetChip) targetChip.classList.add('active');
+        harvestChips.forEach(function(c) {
+            if (c.dataset.text === text) c.classList.add('active');
+        });
         if (species && species.trim()) {
             var spInput = document.getElementById('fish_species');
             if (!spInput.value.trim()) {
