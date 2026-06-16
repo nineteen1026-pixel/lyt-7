@@ -7,12 +7,21 @@ import urllib.request
 import urllib.parse
 import json
 import uuid
+import shutil
+from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response, send_from_directory
 
 app = Flask(__name__)
 app.secret_key = 'fishing_log_secret_key'
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fishing_log.db')
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'uploads')
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
+MAX_CONTENT_LENGTH = 16 * 1024 * 1024
+
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
 WEATHER_API_CONFIG = {
     'city': '北京',
@@ -192,6 +201,19 @@ def init_db():
     if not column_exists(conn, 'equipments', 'deleted_at'):
         conn.execute('ALTER TABLE equipments ADD COLUMN deleted_at TIMESTAMP')
 
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS log_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            log_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            original_name TEXT,
+            caption TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (log_id) REFERENCES fishing_logs(id) ON DELETE CASCADE
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
@@ -280,6 +302,7 @@ def edit_log(log_id):
     harvest_templates = get_harvest_templates(conn)
     equipment_list = get_all_equipments(conn)
     log_equipments, total_eq_cost = get_log_equipments(conn, log_id)
+    log_photos = get_log_photos(conn, log_id)
 
     if log is None:
         conn.close()
@@ -357,8 +380,15 @@ def edit_log(log_id):
                   wind or None, log_id))
 
             save_log_equipments(conn, log_id, equipment_data)
+
+            photos = request.files.getlist('photos')
+            photo_count = save_log_photos(conn, log_id, photos)
+
             conn.commit()
-            flash('记录更新成功！', 'success')
+            if photo_count > 0:
+                flash(f'记录更新成功！已新增 {photo_count} 张照片', 'success')
+            else:
+                flash('记录更新成功！', 'success')
             conn.close()
             return redirect(url_for('log_detail', log_id=log_id, page=page, sort=sort_by, per_page=per_page))
 
@@ -368,7 +398,8 @@ def edit_log(log_id):
                            default_city=WEATHER_API_CONFIG['city'],
                            common_species=common_species, harvest_templates=harvest_templates,
                            equipment_list=equipment_list, log_equipments=log_equipments,
-                           total_equipment_cost=total_eq_cost)
+                           total_equipment_cost=total_eq_cost,
+                           log_photos=log_photos)
 
 
 def get_upcoming_strategies(conn):
@@ -553,15 +584,23 @@ def add_log():
             log_id = cursor.lastrowid
 
             save_log_equipments(conn, log_id, equipment_data)
+
+            photos = request.files.getlist('photos')
+            photo_count = save_log_photos(conn, log_id, photos)
+
             conn.commit()
-            flash('记录添加成功！', 'success')
+            if photo_count > 0:
+                flash(f'记录添加成功！已上传 {photo_count} 张照片', 'success')
+            else:
+                flash('记录添加成功！', 'success')
             conn.close()
             return redirect(url_for('index'))
 
     conn.close()
     return render_template('add.html', bait_list=bait_list, default_city=WEATHER_API_CONFIG['city'],
                            common_species=common_species, harvest_templates=harvest_templates,
-                           equipment_list=equipment_list, log_equipments=[], total_equipment_cost=0)
+                           equipment_list=equipment_list, log_equipments=[], total_equipment_cost=0,
+                           log_photos=[])
 
 
 @app.route('/log/<int:log_id>')
@@ -578,6 +617,7 @@ def log_detail(log_id):
         return redirect(url_for('index'))
     audit_logs = get_audit_logs(conn, log_id)
     log_equipments, total_equipment_cost = get_log_equipments(conn, log_id)
+    log_photos = get_log_photos(conn, log_id)
 
     spot_logs = conn.execute('''
         SELECT id, created_at, harvest, fish_species, bait
@@ -643,7 +683,8 @@ def log_detail(log_id):
                            log_equipments=log_equipments,
                            total_equipment_cost=total_equipment_cost,
                            harvest_value=harvest_value,
-                           cost_per_kg=cost_per_kg)
+                           cost_per_kg=cost_per_kg,
+                           log_photos=log_photos)
 
 
 @app.route('/by-spot')
@@ -654,11 +695,32 @@ def by_spot():
 
     selected_spot = request.args.get('spot', spot_list[0] if spot_list else None)
     logs = []
+    log_photos_dict = {}
     if selected_spot:
-        logs = conn.execute(
+        log_rows = conn.execute(
             'SELECT * FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC',
             (selected_spot,)
         ).fetchall()
+        logs = [dict(row) for row in log_rows]
+
+        log_ids = [log['id'] for log in logs]
+        if log_ids:
+            placeholders = ','.join('?' * len(log_ids))
+            photo_rows = conn.execute(
+                f'SELECT * FROM log_photos WHERE log_id IN ({placeholders}) ORDER BY log_id, sort_order, id',
+                log_ids
+            ).fetchall()
+            for photo in photo_rows:
+                p = dict(photo)
+                p['url'] = f'/static/uploads/{p["filename"]}'
+                if p['log_id'] not in log_photos_dict:
+                    log_photos_dict[p['log_id']] = []
+                log_photos_dict[p['log_id']].append(p)
+
+        for log in logs:
+            log['photos'] = log_photos_dict.get(log['id'], [])
+            log['photo_count'] = len(log['photos'])
+
     conn.close()
 
     return render_template('by_spot.html', spot_list=spot_list, selected_spot=selected_spot, logs=logs)
@@ -853,9 +915,24 @@ def spot_detail(spot_id):
         (spot['name'],)
     ).fetchall()
 
+    spot_photos_rows = conn.execute('''
+        SELECT p.*, l.created_at as log_date, l.harvest as log_harvest
+        FROM log_photos p
+        JOIN fishing_logs l ON p.log_id = l.id
+        WHERE l.spot = ? AND l.deleted_at IS NULL
+        ORDER BY p.sort_order ASC, p.id DESC
+    ''', (spot['name'],)).fetchall()
+
+    spot_photos = []
+    for row in spot_photos_rows:
+        photo = dict(row)
+        photo['url'] = url_for('static', filename=f'uploads/{photo["filename"]}')
+        spot_photos.append(photo)
+
     conn.close()
     return render_template('spot_detail.html', spot=spot_dict, ratings=ratings, related_logs=related_logs,
-                           bait_stats=bait_stats, best_harvest=best_harvest)
+                           bait_stats=bait_stats, best_harvest=best_harvest,
+                           spot_photos=spot_photos)
 
 
 @app.route('/spots/<int:spot_id>/edit', methods=['GET', 'POST'])
@@ -3063,6 +3140,143 @@ def api_equipments_search():
         return jsonify({'success': False, 'message': str(e)}), 500
     finally:
         conn.close()
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def get_log_photos(conn, log_id):
+    rows = conn.execute('''
+        SELECT * FROM log_photos
+        WHERE log_id = ?
+        ORDER BY sort_order ASC, id ASC
+    ''', (log_id,)).fetchall()
+    photos = []
+    for r in rows:
+        photo = dict(r)
+        photo['url'] = url_for('static', filename=f'uploads/{photo["filename"]}')
+        photos.append(photo)
+    return photos
+
+
+def save_log_photos(conn, log_id, files):
+    photo_count = 0
+    existing_count = conn.execute(
+        'SELECT COUNT(*) FROM log_photos WHERE log_id = ?',
+        (log_id,)
+    ).fetchone()[0]
+
+    for idx, file in enumerate(files):
+        if file and file.filename and allowed_file(file.filename):
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            unique_name = f'{uuid.uuid4().hex}.{ext}'
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+            file.save(filepath)
+
+            original_name = secure_filename(file.filename)
+            sort_order = existing_count + idx
+            conn.execute('''
+                INSERT INTO log_photos (log_id, filename, original_name, sort_order)
+                VALUES (?, ?, ?, ?)
+            ''', (log_id, unique_name, original_name, sort_order))
+            photo_count += 1
+    return photo_count
+
+
+@app.route('/log/<int:log_id>/photos/<int:photo_id>/delete', methods=['POST'])
+def delete_photo(log_id, photo_id):
+    conn = get_db()
+    photo = conn.execute(
+        'SELECT * FROM log_photos WHERE id = ? AND log_id = ?',
+        (photo_id, log_id)
+    ).fetchone()
+
+    if photo is None:
+        conn.close()
+        flash('照片不存在！', 'error')
+        return redirect(request.referrer or url_for('log_detail', log_id=log_id))
+
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], photo['filename'])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    conn.execute('DELETE FROM log_photos WHERE id = ?', (photo_id,))
+    conn.commit()
+    conn.close()
+    flash('照片已删除！', 'success')
+    return redirect(request.referrer or url_for('log_detail', log_id=log_id))
+
+
+@app.route('/log/<int:log_id>/photos/<int:photo_id>/caption', methods=['POST'])
+def update_photo_caption(log_id, photo_id):
+    caption = request.form.get('caption', '').strip()
+    conn = get_db()
+    photo = conn.execute(
+        'SELECT id FROM log_photos WHERE id = ? AND log_id = ?',
+        (photo_id, log_id)
+    ).fetchone()
+
+    if photo is None:
+        conn.close()
+        return jsonify({'success': False, 'message': '照片不存在'}), 404
+
+    conn.execute(
+        'UPDATE log_photos SET caption = ? WHERE id = ?',
+        (caption or None, photo_id)
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({'success': True})
+
+
+@app.route('/gallery')
+def gallery():
+    conn = get_db()
+    spot_param = request.args.get('spot', None)
+
+    query = '''
+        SELECT p.*, l.spot, l.created_at as log_date, l.harvest
+        FROM log_photos p
+        JOIN fishing_logs l ON p.log_id = l.id
+        WHERE l.deleted_at IS NULL
+    '''
+    params = []
+
+    if spot_param:
+        query += ' AND l.spot = ?'
+        params.append(spot_param)
+
+    query += ' ORDER BY p.sort_order ASC, p.id DESC'
+
+    all_photos = conn.execute(query, params).fetchall()
+
+    spot_photos = {}
+    spot_photo_count = {}
+    for row in all_photos:
+        spot = row['spot']
+        if spot not in spot_photos:
+            spot_photos[spot] = []
+            spot_photo_count[spot] = 0
+        photo = dict(row)
+        photo['url'] = url_for('static', filename=f'uploads/{photo["filename"]}')
+        spot_photos[spot].append(photo)
+        spot_photo_count[spot] += 1
+
+    all_spots = sorted(spot_photos.keys())
+
+    total_photos = sum(spot_photo_count.values())
+
+    conn.close()
+    return render_template(
+        'gallery.html',
+        spot_photos=spot_photos,
+        all_spots=all_spots,
+        spot_photo_count=spot_photo_count,
+        selected_spot=spot_param,
+        total_photos=total_photos
+    )
 
 
 if __name__ == '__main__':

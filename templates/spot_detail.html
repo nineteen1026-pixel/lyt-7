@@ -209,6 +209,73 @@
         </div>
     {% endif %}
 
+    {% if spot_photos and spot_photos|length > 0 %}
+        <div class="detail-section" style="margin-top: 25px;">
+            <div class="detail-section-header">
+                <h3>📷 钓点照片</h3>
+                <span class="photo-count">{{ spot_photos|length }} 张</span>
+            </div>
+            <div class="photo-gallery">
+                {% for photo in spot_photos %}
+                <div class="gallery-item" onclick="openSpotLightbox({{ loop.index0 }})">
+                    <img src="{{ photo.url }}" alt="{{ photo.original_name or '照片' }}" loading="lazy">
+                    <div class="gallery-photo-meta">
+                        <span>{{ photo.log_date }}</span>
+                        {% if photo.log_harvest %}<span class="gallery-harvest-tag">🎣 {{ photo.log_harvest[:20] }}</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div class="lightbox" id="spot-lightbox" onclick="closeSpotLightbox()">
+            <span class="lightbox-close">&times;</span>
+            <button class="lightbox-prev" onclick="event.stopPropagation(); changeSpotLightbox(-1)">&#10094;</button>
+            <button class="lightbox-next" onclick="event.stopPropagation(); changeSpotLightbox(1)">&#10095;</button>
+            <img class="lightbox-content" id="spot-lightbox-img" onclick="event.stopPropagation()">
+            <div class="lightbox-caption" id="spot-lightbox-caption"></div>
+        </div>
+        <script>
+        var spotGalleryPhotos = [
+            {% for photo in spot_photos %}
+            { url: '{{ photo.url }}', caption: '📅 {{ photo.log_date }}{% if photo.log_harvest %} · 🎣 {{ photo.log_harvest }}{% endif %}' }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ];
+        var currentSpotLightboxIndex = 0;
+
+        function openSpotLightbox(index) {
+            currentSpotLightboxIndex = index;
+            var lb = document.getElementById('spot-lightbox');
+            var img = document.getElementById('spot-lightbox-img');
+            var cap = document.getElementById('spot-lightbox-caption');
+            img.src = spotGalleryPhotos[index].url;
+            cap.textContent = spotGalleryPhotos[index].caption;
+            lb.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeSpotLightbox() {
+            document.getElementById('spot-lightbox').style.display = 'none';
+            document.body.style.overflow = '';
+        }
+
+        function changeSpotLightbox(delta) {
+            currentSpotLightboxIndex = (currentSpotLightboxIndex + delta + spotGalleryPhotos.length) % spotGalleryPhotos.length;
+            var img = document.getElementById('spot-lightbox-img');
+            var cap = document.getElementById('spot-lightbox-caption');
+            img.src = spotGalleryPhotos[currentSpotLightboxIndex].url;
+            cap.textContent = spotGalleryPhotos[currentSpotLightboxIndex].caption;
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (document.getElementById('spot-lightbox').style.display !== 'flex') return;
+            if (e.key === 'Escape') closeSpotLightbox();
+            if (e.key === 'ArrowLeft') changeSpotLightbox(-1);
+            if (e.key === 'ArrowRight') changeSpotLightbox(1);
+        });
+        </script>
+    {% endif %}
+
     {% if related_logs %}
         <div class="detail-section" style="margin-top: 25px;">
             <h3>📋 相关垂钓记录（{{ related_logs|length }}）</h3>

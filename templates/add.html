@@ -7,7 +7,7 @@
         <h2>新增垂钓记录</h2>
     </div>
 
-    <form method="POST" class="log-form">
+    <form method="POST" class="log-form" enctype="multipart/form-data">
         <div class="form-grid">
             <div class="form-group">
                 <label for="spot">钓点 <span class="required">*</span></label>
@@ -150,6 +150,16 @@
             <div class="form-group">
                 <label for="next_strategy_date">策略执行日期</label>
                 <input type="date" id="next_strategy_date" name="next_strategy_date">
+            </div>
+
+            <div class="form-group full-width">
+                <div class="equipment-section-header">
+                    <label>📷 现场照片</label>
+                </div>
+                <div class="photo-upload-area">
+                    <input type="file" id="photos" name="photos" multiple accept="image/*" onchange="previewPhotos(this)">
+                    <div id="photo-preview-list" class="photo-preview-list"></div>
+                </div>
             </div>
 
             <div class="form-group full-width">
@@ -848,5 +858,24 @@
             });
         }
     })();
+
+    function previewPhotos(input) {
+        var previewList = document.getElementById('photo-preview-list');
+        previewList.innerHTML = '';
+        if (input.files && input.files.length > 0) {
+            for (var i = 0; i < input.files.length; i++) {
+                (function(file) {
+                    var reader = new FileReader();
+                    reader.onload = function(e) {
+                        var item = document.createElement('div');
+                        item.className = 'photo-preview-item';
+                        item.innerHTML = '<img src="' + e.target.result + '" alt="预览"><span class="photo-preview-name">' + escapeHtml(file.name) + '</span>';
+                        previewList.appendChild(item);
+                    };
+                    reader.readAsDataURL(file);
+                })(input.files[i]);
+            }
+        }
+    }
     </script>
 {% endblock %}

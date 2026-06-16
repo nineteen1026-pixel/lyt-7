@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+
+{% block title %}相册 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <div>
+            <h2>📷 现场相册</h2>
+            <p class="gallery-overview">共 {{ total_photos }} 张照片，{{ all_spots|length }} 个钓点</p>
+        </div>
+    </div>
+
+    {% if all_spots %}
+        <div class="filter-bar">
+            <a href="{{ url_for('gallery') }}"
+               class="filter-btn {% if not selected_spot %}active{% endif %}">
+                全部钓点
+            </a>
+            {% for spot in all_spots %}
+                <a href="{{ url_for('gallery', spot=spot) }}"
+                   class="filter-btn {% if selected_spot == spot %}active{% endif %}">
+                    {{ spot }}
+                    <span class="filter-count">{{ spot_photo_count[spot] }}</span>
+                </a>
+            {% endfor %}
+        </div>
+
+        {% if selected_spot %}
+            <div class="gallery-spot-section">
+                <h3 class="gallery-spot-title">📍 {{ selected_spot }}</h3>
+                <div class="photo-gallery">
+                    {% for photo in spot_photos[selected_spot] %}
+                    <div class="gallery-item" onclick="openLightbox('{{ selected_spot }}', {{ loop.index0 }})">
+                        <img src="{{ photo.url }}" alt="{{ photo.original_name or '照片' }}" loading="lazy">
+                        <div class="gallery-photo-meta">
+                            <span>{{ photo.log_date }}</span>
+                            {% if photo.harvest %}<span class="gallery-harvest-tag">🎣 {{ photo.harvest[:20] }}</span>{% endif %}
+                        </div>
+                        <a href="{{ url_for('log_detail', log_id=photo.log_id) }}" class="gallery-log-link" onclick="event.stopPropagation()" title="查看记录">📋</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% else %}
+            {% for spot in all_spots %}
+            <div class="gallery-spot-section">
+                <div class="gallery-spot-header">
+                    <h3 class="gallery-spot-title">📍 {{ spot }}</h3>
+                    <span class="gallery-spot-count">{{ spot_photo_count[spot] }} 张</span>
+                </div>
+                <div class="photo-gallery">
+                    {% for photo in spot_photos[spot] %}
+                    <div class="gallery-item" onclick="openLightbox('{{ spot }}', {{ loop.index0 }})">
+                        <img src="{{ photo.url }}" alt="{{ photo.original_name or '照片' }}" loading="lazy">
+                        <div class="gallery-photo-meta">
+                            <span>{{ photo.log_date }}</span>
+                            {% if photo.harvest %}<span class="gallery-harvest-tag">🎣 {{ photo.harvest[:20] }}</span>{% endif %}
+                        </div>
+                        <a href="{{ url_for('log_detail', log_id=photo.log_id) }}" class="gallery-log-link" onclick="event.stopPropagation()" title="查看记录">📋</a>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        {% endif %}
+    {% else %}
+        <div class="empty-state">
+            <p>还没有上传任何照片</p>
+            <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录并上传照片</a>
+        </div>
+    {% endif %}
+
+    {% if all_spots %}
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close">&times;</span>
+        <button class="lightbox-prev" onclick="event.stopPropagation(); changeLightbox(-1)">&#10094;</button>
+        <button class="lightbox-next" onclick="event.stopPropagation(); changeLightbox(1)">&#10095;</button>
+        <img class="lightbox-content" id="lightbox-img" onclick="event.stopPropagation()">
+        <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+
+    <script>
+    var allGalleryData = {
+        {% for spot in all_spots %}
+        '{{ spot }}': [
+            {% for photo in spot_photos[spot] %}
+            {
+                url: '{{ photo.url }}',
+                caption: '📅 {{ photo.log_date }}{% if photo.harvest %} · 🎣 {{ photo.harvest }}{% endif %}',
+                logId: {{ photo.log_id }}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        ]{% if not loop.last %},{% endif %}
+        {% endfor %}
+    };
+
+    var currentSpot = null;
+    var currentLightboxIndex = 0;
+
+    function openLightbox(spot, index) {
+        currentSpot = spot;
+        currentLightboxIndex = index;
+        var photos = allGalleryData[spot];
+        if (!photos || photos.length === 0) return;
+        var lb = document.getElementById('lightbox');
+        var img = document.getElementById('lightbox-img');
+        var cap = document.getElementById('lightbox-caption');
+        img.src = photos[index].url;
+        cap.textContent = photos[index].caption;
+        lb.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+        document.getElementById('lightbox').style.display = 'none';
+        document.body.style.overflow = '';
+        currentSpot = null;
+    }
+
+    function changeLightbox(delta) {
+        if (!currentSpot) return;
+        var photos = allGalleryData[currentSpot];
+        if (!photos || photos.length === 0) return;
+        currentLightboxIndex = (currentLightboxIndex + delta + photos.length) % photos.length;
+        var img = document.getElementById('lightbox-img');
+        var cap = document.getElementById('lightbox-caption');
+        img.src = photos[currentLightboxIndex].url;
+        cap.textContent = photos[currentLightboxIndex].caption;
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (document.getElementById('lightbox').style.display !== 'flex') return;
+        if (e.key === 'Escape') closeLightbox();
+        if (e.key === 'ArrowLeft') changeLightbox(-1);
+        if (e.key === 'ArrowRight') changeLightbox(1);
+    });
+    </script>
+    {% endif %}
+{% endblock %}

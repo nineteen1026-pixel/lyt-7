@@ -10,7 +10,7 @@
         </div>
     </div>
 
-    <form method="POST" class="log-form">
+    <form method="POST" class="log-form" enctype="multipart/form-data">
         <div class="form-grid">
             <div class="form-group">
                 <label for="spot">钓点 <span class="required">*</span></label>
@@ -153,6 +153,30 @@
             <div class="form-group">
                 <label for="next_strategy_date">策略执行日期</label>
                 <input type="date" id="next_strategy_date" name="next_strategy_date" value="{{ log['next_strategy_date'] or '' }}">
+            </div>
+
+            <div class="form-group full-width">
+                <div class="equipment-section-header">
+                    <label>📷 现场照片</label>
+                </div>
+                <div class="photo-upload-area">
+                    <input type="file" id="photos" name="photos" multiple accept="image/*" onchange="previewPhotos(this)">
+                    {% if log_photos and log_photos|length > 0 %}
+                    <div class="photo-existing-hint">已有 {{ log_photos|length }} 张照片（可删除单张或继续添加）</div>
+                    <div class="photo-existing-list" id="photo-existing-list">
+                        {% for photo in log_photos %}
+                        <div class="photo-existing-item" data-photo-id="{{ photo.id }}">
+                            <img src="{{ photo.url }}" alt="{{ photo.original_name or '' }}">
+                            <div class="photo-existing-actions">
+                                <button type="button" class="btn btn-small btn-danger" onclick="deletePhoto({{ photo.id }}, this)">删除</button>
+                            </div>
+                            {% if photo.caption %}<div class="photo-caption">{{ photo.caption }}</div>{% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    <div id="photo-preview-list" class="photo-preview-list"></div>
+                </div>
             </div>
 
             <div class="form-group full-width">
@@ -859,5 +883,49 @@
             });
         }
     })();
+
+    function previewPhotos(input) {
+        var previewList = document.getElementById('photo-preview-list');
+        previewList.innerHTML = '';
+        if (input.files && input.files.length > 0) {
+            for (var i = 0; i < input.files.length; i++) {
+                (function(file) {
+                    var reader = new FileReader();
+                    reader.onload = function(e) {
+                        var item = document.createElement('div');
+                        item.className = 'photo-preview-item';
+                        item.innerHTML = '<img src="' + e.target.result + '" alt="预览"><span class="photo-preview-name">' + escapeHtml(file.name) + '</span>';
+                        previewList.appendChild(item);
+                    };
+                    reader.readAsDataURL(file);
+                })(input.files[i]);
+            }
+        }
+    }
+
+    function deletePhoto(photoId, btn) {
+        if (!confirm('确定删除这张照片吗？')) return;
+        var formData = new FormData();
+        formData.append('photo_id', photoId);
+        fetch('/log/{{ log["id"] }}/photos/' + photoId + '/delete', {
+            method: 'POST',
+            body: formData
+        }).then(function(resp) { return resp.json(); }).then(function(data) {
+            if (data.success) {
+                var item = btn.closest('.photo-existing-item');
+                if (item) item.remove();
+                var existingList = document.getElementById('photo-existing-list');
+                if (existingList && existingList.children.length === 0) {
+                    var hint = document.querySelector('.photo-existing-hint');
+                    if (hint) hint.remove();
+                    existingList.remove();
+                }
+            } else {
+                alert('删除失败：' + (data.message || '未知错误'));
+            }
+        }).catch(function(err) {
+            alert('请求失败：' + err.message);
+        });
+    }
     </script>
 {% endblock %}

@@ -17,6 +17,7 @@
                 <a href="{{ url_for('spots_list', filter='favorite') }}" class="{% if request.endpoint == 'spots_list' and request.args.get('filter') == 'favorite' %}active{% endif %}">⭐ 收藏评分</a>
                 <a href="{{ url_for('by_spot') }}" class="{% if request.endpoint == 'by_spot' %}active{% endif %}">按钓点</a>
                 <a href="{{ url_for('by_date') }}" class="{% if request.endpoint == 'by_date' %}active{% endif %}">按日期</a>
+                <a href="{{ url_for('gallery') }}" class="{% if request.endpoint == 'gallery' %}active{% endif %}">📷 相册</a>
                 <a href="{{ url_for('search_logs') }}" class="{% if request.endpoint == 'search_logs' %}active{% endif %}">🔍 检索</a>
                 <a href="{{ url_for('equipments_list') }}" class="{% if request.endpoint in ['equipments_list', 'add_equipment', 'edit_equipment', 'equipment_detail', 'equipment_transaction', 'transactions_list'] %}active{% endif %}">🎒 装备台账</a>
                 <a href="{{ url_for('baits_list') }}" class="{% if request.endpoint in ['baits_list', 'add_bait', 'edit_bait'] %}active{% endif %}">🐛 饵料库</a>

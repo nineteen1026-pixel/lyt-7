@@ -98,7 +98,75 @@
                 {% endif %}
             </div>
         {% endif %}
+
+        {% if log_photos and log_photos|length > 0 %}
+            <div class="detail-section">
+                <div class="detail-section-header">
+                    <h3>📷 现场照片</h3>
+                    <span class="photo-count">{{ log_photos|length }} 张</span>
+                </div>
+                <div class="photo-gallery">
+                    {% for photo in log_photos %}
+                    <div class="gallery-item" onclick="openLightbox({{ loop.index0 }})">
+                        <img src="{{ photo.url }}" alt="{{ photo.original_name or '照片' }}" loading="lazy">
+                        {% if photo.caption %}
+                        <div class="gallery-caption">{{ photo.caption }}</div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        {% endif %}
     </div>
+
+    {% if log_photos and log_photos|length > 0 %}
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()">
+        <span class="lightbox-close">&times;</span>
+        <button class="lightbox-prev" onclick="event.stopPropagation(); changeLightbox(-1)">&#10094;</button>
+        <button class="lightbox-next" onclick="event.stopPropagation(); changeLightbox(1)">&#10095;</button>
+        <img class="lightbox-content" id="lightbox-img" onclick="event.stopPropagation()">
+        <div class="lightbox-caption" id="lightbox-caption"></div>
+    </div>
+    <script>
+    var galleryPhotos = [
+        {% for photo in log_photos %}
+        { url: '{{ photo.url }}', caption: {{ photo.caption|tojson if photo.caption else '""' }} }{% if not loop.last %},{% endif %}
+        {% endfor %}
+    ];
+    var currentLightboxIndex = 0;
+
+    function openLightbox(index) {
+        currentLightboxIndex = index;
+        var lb = document.getElementById('lightbox');
+        var img = document.getElementById('lightbox-img');
+        var cap = document.getElementById('lightbox-caption');
+        img.src = galleryPhotos[index].url;
+        cap.textContent = galleryPhotos[index].caption || '';
+        lb.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+        document.getElementById('lightbox').style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    function changeLightbox(delta) {
+        currentLightboxIndex = (currentLightboxIndex + delta + galleryPhotos.length) % galleryPhotos.length;
+        var img = document.getElementById('lightbox-img');
+        var cap = document.getElementById('lightbox-caption');
+        img.src = galleryPhotos[currentLightboxIndex].url;
+        cap.textContent = galleryPhotos[currentLightboxIndex].caption || '';
+    }
+
+    document.addEventListener('keydown', function(e) {
+        if (document.getElementById('lightbox').style.display !== 'flex') return;
+        if (e.key === 'Escape') closeLightbox();
+        if (e.key === 'ArrowLeft') changeLightbox(-1);
+        if (e.key === 'ArrowRight') changeLightbox(1);
+    });
+    </script>
+    {% endif %}
 
     {% if audit_logs %}
         <div class="audit-section">

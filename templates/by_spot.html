@@ -24,6 +24,7 @@
                         <div class="log-header">
                             <span class="log-date">{{ log['created_at'] }}</span>
                             <span class="log-spot">📍 {{ log['spot'] }}</span>
+                            {% if log.photo_count %}<span class="photo-count">📷 {{ log.photo_count }}</span>{% endif %}
                         </div>
                         <div class="log-body">
                             <div class="log-row">
@@ -46,6 +47,13 @@
                                 <span class="label">收获：</span>
                                 <span class="harvest">{{ log['harvest'] }}</span>
                             </div>
+                            {% if log.photos %}
+                            <div class="log-card-photos-preview">
+                                {% for photo in log.photos[:6] %}
+                                <img src="{{ photo.url }}" alt="{{ photo.original_name or '照片' }}" onclick="window.location.href='{{ url_for('log_detail', log_id=log.id) }}'" title="查看详情" loading="lazy">
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                         <div class="log-footer">
                             <a href="{{ url_for('log_detail', log_id=log['id']) }}" class="btn btn-small">查看详情</a>
