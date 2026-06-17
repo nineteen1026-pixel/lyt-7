@@ -57,6 +57,128 @@
             </div>
         </div>
 
+        {% if astro_info %}
+        <div class="detail-section astro-section">
+            <h3>🌌 天文环境</h3>
+            <div class="astro-detail-grid">
+                <div class="astro-detail-item">
+                    <span class="astro-detail-icon">{{ astro_info['moon_phase_icon'] }}</span>
+                    <div class="astro-detail-content">
+                        <span class="astro-detail-label">月相</span>
+                        <span class="astro-detail-value">{{ astro_info['moon_phase'] }}</span>
+                    </div>
+                </div>
+                <div class="astro-detail-item">
+                    <span class="astro-detail-icon">💡</span>
+                    <div class="astro-detail-content">
+                        <span class="astro-detail-label">月面照明度</span>
+                        <span class="astro-detail-value">{{ astro_info['moon_illumination'] }}%</span>
+                    </div>
+                </div>
+                <div class="astro-detail-item">
+                    <span class="astro-detail-icon">📅</span>
+                    <div class="astro-detail-content">
+                        <span class="astro-detail-label">农历</span>
+                        <span class="astro-detail-value">初{{ astro_info['lunar_day'] }}</span>
+                    </div>
+                </div>
+                <div class="astro-detail-item">
+                    <span class="astro-detail-icon">🌊</span>
+                    <div class="astro-detail-content">
+                        <span class="astro-detail-label">潮汐类型</span>
+                        <span class="astro-detail-value">{{ astro_info['tide_name'] }}</span>
+                    </div>
+                </div>
+                <div class="astro-detail-item astro-detail-item-full">
+                    <span class="astro-detail-icon">🎯</span>
+                    <div class="astro-detail-content">
+                        <span class="astro-detail-label">适钓指数</span>
+                        <span class="astro-detail-value astro-index-badge astro-index-{{ 'good' if astro_info['fishing_index'] >= 7 else ('medium' if astro_info['fishing_index'] >= 4 else 'bad') }}">{{ astro_info['fishing_index'] }}/10</span>
+                    </div>
+                </div>
+            </div>
+
+            {% if astro_info['sunrise'] or astro_info['sunset'] or astro_info['moonrise'] or astro_info['moonset'] or astro_info['day_length'] %}
+            <div class="astro-sun-moon-grid">
+                {% if astro_info['sunrise'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">🌅</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">日出</span>
+                        <span class="astro-detail-value">{{ astro_info['sunrise'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if astro_info['sunset'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">🌇</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">日落</span>
+                        <span class="astro-detail-value">{{ astro_info['sunset'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if astro_info['day_length'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">☀️</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">白昼时长</span>
+                        <span class="astro-detail-value">{{ astro_info['day_length'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if astro_info['moonrise'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">🌒</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">月出</span>
+                        <span class="astro-detail-value">{{ astro_info['moonrise'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if astro_info['moonset'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">🌘</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">月落</span>
+                        <span class="astro-detail-value">{{ astro_info['moonset'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if astro_info['civil_twilight_begin'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">🌄</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">晨曦开始</span>
+                        <span class="astro-detail-value">{{ astro_info['civil_twilight_begin'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+                {% if astro_info['civil_twilight_end'] %}
+                <div class="astro-sun-moon-item">
+                    <span class="astro-sun-moon-icon">🌆</span>
+                    <div class="astro-sun-moon-content">
+                        <span class="astro-detail-label">暮光结束</span>
+                        <span class="astro-detail-value">{{ astro_info['civil_twilight_end'] }}</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {% if astro_info['fishing_reason'] %}
+            <div class="astro-reason-box">
+                <div class="astro-reason-header">📊 适钓分析</div>
+                <div class="astro-reason-text">{{ astro_info['fishing_reason'] }}</div>
+            </div>
+            {% endif %}
+
+            {% if astro_info['astro_description'] %}
+            <div class="astro-description">{{ astro_info['astro_description'] }}</div>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <div class="detail-section">
             <h3>🎯 收获情况</h3>
             <p class="detail-text">{{ log['harvest'] }}</p>

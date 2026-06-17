@@ -1,5 +1,6 @@
 import csv
 import io
+import math
 import os
 import re
 import sqlite3
@@ -27,6 +28,263 @@ WEATHER_API_CONFIG = {
     'city': '北京',
     'timeout': 5,
 }
+
+ASTRO_API_CONFIG = {
+    'timeout': 8,
+    'base_url': 'https://api.sunrise-sunset.org/json',
+}
+
+MOON_PHASE_NAMES = {
+    0: '新月',
+    1: '蛾眉月',
+    2: '上弦月',
+    3: '盈凸月',
+    4: '满月',
+    5: '亏凸月',
+    6: '下弦月',
+    7: '残月',
+}
+
+MOON_PHASE_ICONS = {
+    0: '🌑',
+    1: '🌒',
+    2: '🌓',
+    3: '🌔',
+    4: '🌕',
+    5: '🌖',
+    6: '🌗',
+    7: '🌘',
+}
+
+TIDE_TYPES = {
+    'spring': '大潮',
+    'neap': '小潮',
+    'normal': '中潮',
+}
+
+
+def calculate_moon_phase(date_str):
+    try:
+        target_date = datetime.strptime(date_str, '%Y-%m-%d').date()
+    except (ValueError, TypeError):
+        return None
+
+    ref_new_moon = datetime(2000, 1, 6, 18, 14).date()
+    synodic_period = 29.53058867
+    days_since = (target_date - ref_new_moon).days
+    lunar_age = days_since % synodic_period
+    illumination = (1 - math.cos(2 * math.pi * lunar_age / synodic_period)) / 2
+
+    phase_index = int((lunar_age / synodic_period) * 8) % 8
+
+    lunar_day = int(lunar_age) + 1
+    if lunar_day > 30:
+        lunar_day = 30
+
+    if phase_index in (0, 4):
+        tide_type = 'spring'
+    elif phase_index in (2, 6):
+        tide_type = 'neap'
+    else:
+        tide_type = 'normal'
+
+    return {
+        'moon_phase': MOON_PHASE_NAMES.get(phase_index, '未知'),
+        'moon_phase_icon': MOON_PHASE_ICONS.get(phase_index, '🌙'),
+        'moon_illumination': round(illumination * 100, 1),
+        'lunar_day': lunar_day,
+        'lunar_age': round(lunar_age, 2),
+        'tide_type': tide_type,
+        'tide_name': TIDE_TYPES.get(tide_type, '未知'),
+        'phase_index': phase_index,
+    }
+
+
+def fetch_external_astro_data(date_str, lat=None, lng=None):
+    external_data = {}
+    try:
+        params = urllib.parse.urlencode({
+            'date': date_str,
+            'formatted': 0,
+        })
+        if lat and lng:
+            params += f'&lat={lat}&lng={lng}'
+        else:
+            params += '&lat=39.9042&lng=116.4074'
+        url = f"{ASTRO_API_CONFIG['base_url']}?{params}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'FishingLog/1.0'})
+        with urllib.request.urlopen(req, timeout=ASTRO_API_CONFIG['timeout']) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        if data.get('status') == 'OK' and data.get('results'):
+            results = data['results']
+            for key in ['sunrise', 'sunset', 'moonrise', 'moonset',
+                        'civil_twilight_begin', 'civil_twilight_end',
+                        'nautical_twilight_begin', 'nautical_twilight_end']:
+                val = results.get(key)
+                if val and val != 'None':
+                    try:
+                        dt = datetime.strptime(val, '%Y-%m-%dT%H:%M:%S%z')
+                        local_dt = dt.astimezone()
+                        external_data[key] = local_dt.strftime('%H:%M')
+                    except (ValueError, OSError):
+                        external_data[key] = val
+                else:
+                    external_data[key] = None
+
+            day_length = results.get('day_length')
+            if day_length:
+                try:
+                    total_seconds = int(day_length)
+                    hours, remainder = divmod(total_seconds, 3600)
+                    minutes, _ = divmod(remainder, 60)
+                    external_data['day_length'] = f'{hours}小时{minutes}分钟'
+                except (ValueError, TypeError):
+                    external_data['day_length'] = str(day_length)
+            else:
+                sr = results.get('sunrise')
+                ss = results.get('sunset')
+                if sr and ss and sr != 'None' and ss != 'None':
+                    try:
+                        sr_dt = datetime.strptime(sr, '%Y-%m-%dT%H:%M:%S%z')
+                        ss_dt = datetime.strptime(ss, '%Y-%m-%dT%H:%M:%S%z')
+                        diff = ss_dt - sr_dt
+                        hours, remainder = divmod(int(diff.total_seconds()), 3600)
+                        minutes, _ = divmod(remainder, 60)
+                        external_data['day_length'] = f'{hours}小时{minutes}分钟'
+                    except (ValueError, OSError):
+                        external_data['day_length'] = None
+    except Exception:
+        pass
+    return external_data
+
+
+def calculate_fishing_index(astro_data, weather_data=None):
+    if not astro_data:
+        return 5, '无法计算适钓指数'
+
+    score = 5
+    reasons = []
+    phase_index = astro_data.get('phase_index', -1)
+    tide_type = astro_data.get('tide_type', 'normal')
+    illumination = astro_data.get('moon_illumination', 50)
+
+    if phase_index in (1, 7):
+        score += 1
+        reasons.append('蛾眉月/残月期，鱼类觅食活跃度较高')
+    elif phase_index in (2, 6):
+        score += 1
+        reasons.append('上下弦月期，潮汐变化明显，鱼口较好')
+    elif phase_index == 0:
+        score -= 1
+        reasons.append('新月期，光线极弱，部分鱼种活跃度下降')
+    elif phase_index == 4:
+        score += 0
+        reasons.append('满月期，夜间光线充足，鱼可能在夜间已觅食')
+
+    if tide_type == 'spring':
+        score += 1
+        reasons.append('大潮期，水流强劲，鱼类随潮觅食积极')
+    elif tide_type == 'neap':
+        score -= 1
+        reasons.append('小潮期，水流平缓，鱼类活动范围缩小')
+
+    if 30 <= illumination <= 70:
+        score += 1
+        reasons.append('月光适中，有利于夜钓和晨昏时段作钓')
+
+    if weather_data:
+        weather = (weather_data.get('weather', '') or '').lower()
+        temp_str = weather_data.get('temperature', '') or ''
+        wind_str = weather_data.get('wind', '') or ''
+
+        if any(w in weather for w in ['阴', '多云', 'cloudy']):
+            score += 1
+            reasons.append('阴天/多云天气，光线柔和，鱼更敢靠岸觅食')
+        elif '晴' in weather or 'sunny' in weather:
+            score += 0
+            reasons.append('晴天光照强烈，建议选择晨昏时段出钓')
+
+        if '雨' in weather:
+            if '大' in weather or '暴' in weather:
+                score -= 2
+                reasons.append('大雨/暴雨天气，不宜出钓')
+            elif '小' in weather or '阵' in weather:
+                score += 1
+                reasons.append('小雨/阵雨天气，水中溶氧增加，鱼口活跃')
+
+        temp_val = 0
+        temp_match = re.search(r'(\d+)', temp_str)
+        if temp_match:
+            temp_val = int(temp_match.group(1))
+            if 18 <= temp_val <= 28:
+                score += 1
+                reasons.append(f'气温{temp_val}℃处于鱼类适宜觅食温度区间')
+            elif temp_val < 10:
+                score -= 1
+                reasons.append(f'气温{temp_val}℃偏低，鱼类活性降低')
+            elif temp_val > 35:
+                score -= 1
+                reasons.append(f'气温{temp_val}℃偏高，鱼类潜入深水避暑')
+
+        wind_speed = 0
+        ws_match = re.search(r'(\d+)', wind_str)
+        if ws_match:
+            wind_speed = int(ws_match.group(1))
+        if 5 <= wind_speed <= 20:
+            score += 1
+            reasons.append('微风天气，水面溶氧充足，利于垂钓')
+        elif wind_speed > 30:
+            score -= 1
+            reasons.append('风力较大，影响观漂和抛竿')
+
+    score = max(1, min(10, round(score)))
+
+    if not reasons:
+        reasons.append('天文条件一般，结合经验选择钓位和饵料')
+
+    return score, '；'.join(reasons)
+
+
+def get_astro_summary(astro_data, fishing_index, fishing_reason):
+    if not astro_data:
+        return '暂无天文数据'
+
+    parts = []
+    phase = astro_data.get('moon_phase', '未知')
+    icon = astro_data.get('moon_phase_icon', '🌙')
+    illumination = astro_data.get('moon_illumination', 0)
+    tide_name = astro_data.get('tide_name', '未知')
+    lunar_day = astro_data.get('lunar_day', 0)
+
+    parts.append(f'当日月相为{icon}{phase}，月面照明度{illumination}%')
+    parts.append(f'农历初{lunar_day}，潮汐类型为{tide_name}')
+
+    sunrise = astro_data.get('sunrise')
+    sunset = astro_data.get('sunset')
+    day_length = astro_data.get('day_length')
+    if sunrise and sunset:
+        parts.append(f'日出{sunrise}，日落{sunset}，白昼时长{day_length or "未知"}')
+
+    moonrise = astro_data.get('moonrise')
+    moonset = astro_data.get('moonset')
+    if moonrise or moonset:
+        moon_times = []
+        if moonrise:
+            moon_times.append(f'月出{moonrise}')
+        if moonset:
+            moon_times.append(f'月落{moonset}')
+        parts.append('，'.join(moon_times))
+
+    if fishing_index >= 8:
+        parts.append('综合天文条件非常有利，是出钓的好时机')
+    elif fishing_index >= 6:
+        parts.append('天文条件尚可，配合合适的饵料和钓位可有收获')
+    elif fishing_index >= 4:
+        parts.append('天文条件一般，需要更耐心地等待和更精准的策略')
+    else:
+        parts.append('天文条件欠佳，建议谨慎出钓或择日再战')
+
+    return '。'.join(parts)
 
 
 def get_db():
@@ -65,6 +323,34 @@ def init_db():
         conn.execute('ALTER TABLE fishing_logs ADD COLUMN wind TEXT')
     if not column_exists(conn, 'fishing_logs', 'next_strategy_date'):
         conn.execute('ALTER TABLE fishing_logs ADD COLUMN next_strategy_date DATE')
+    if not column_exists(conn, 'fishing_logs', 'moon_phase'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN moon_phase TEXT')
+    if not column_exists(conn, 'fishing_logs', 'moon_illumination'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN moon_illumination REAL')
+    if not column_exists(conn, 'fishing_logs', 'lunar_day'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN lunar_day INTEGER')
+    if not column_exists(conn, 'fishing_logs', 'tide_type'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN tide_type TEXT')
+    if not column_exists(conn, 'fishing_logs', 'fishing_index'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN fishing_index INTEGER')
+    if not column_exists(conn, 'fishing_logs', 'astro_description'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN astro_description TEXT')
+    if not column_exists(conn, 'fishing_logs', 'sunrise'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN sunrise TEXT')
+    if not column_exists(conn, 'fishing_logs', 'sunset'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN sunset TEXT')
+    if not column_exists(conn, 'fishing_logs', 'moonrise'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN moonrise TEXT')
+    if not column_exists(conn, 'fishing_logs', 'moonset'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN moonset TEXT')
+    if not column_exists(conn, 'fishing_logs', 'day_length'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN day_length TEXT')
+    if not column_exists(conn, 'fishing_logs', 'civil_twilight_begin'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN civil_twilight_begin TEXT')
+    if not column_exists(conn, 'fishing_logs', 'civil_twilight_end'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN civil_twilight_end TEXT')
+    if not column_exists(conn, 'fishing_logs', 'fishing_reason'):
+        conn.execute('ALTER TABLE fishing_logs ADD COLUMN fishing_reason TEXT')
     conn.execute('''
         CREATE TABLE IF NOT EXISTS fishing_spots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -255,7 +541,21 @@ FIELD_LABELS = {
     'created_at': '日期',
     'temperature': '温度',
     'humidity': '湿度',
-    'wind': '风力'
+    'wind': '风力',
+    'moon_phase': '月相',
+    'moon_illumination': '月亮照明度',
+    'lunar_day': '农历日',
+    'tide_type': '潮汐类型',
+    'fishing_index': '适钓指数',
+    'astro_description': '天文环境说明',
+    'sunrise': '日出时间',
+    'sunset': '日落时间',
+    'moonrise': '月出时间',
+    'moonset': '月落时间',
+    'day_length': '白昼时长',
+    'civil_twilight_begin': '晨曦开始',
+    'civil_twilight_end': '暮光结束',
+    'fishing_reason': '适钓分析',
 }
 
 EDITABLE_FIELDS = [
@@ -372,6 +672,48 @@ def edit_log(log_id):
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
         else:
+            moon_phase = request.form.get('moon_phase', '').strip()
+            moon_illumination = request.form.get('moon_illumination', '').strip()
+            lunar_day = request.form.get('lunar_day', '').strip()
+            tide_type = request.form.get('tide_type', '').strip()
+            fishing_index = request.form.get('fishing_index', '').strip()
+            astro_description = request.form.get('astro_description', '').strip()
+            sunrise = request.form.get('sunrise', '').strip()
+            sunset_val = request.form.get('sunset', '').strip()
+            moonrise = request.form.get('moonrise', '').strip()
+            moonset = request.form.get('moonset', '').strip()
+            day_length = request.form.get('day_length', '').strip()
+            civil_twilight_begin = request.form.get('civil_twilight_begin', '').strip()
+            civil_twilight_end = request.form.get('civil_twilight_end', '').strip()
+            fishing_reason = request.form.get('fishing_reason', '').strip()
+
+            if not moon_phase:
+                astro_data = calculate_moon_phase(created_at)
+                if astro_data:
+                    external_data = fetch_external_astro_data(created_at)
+                    if external_data:
+                        astro_data.update(external_data)
+                    weather_data = {
+                        'weather': weather,
+                        'temperature': temperature,
+                        'wind': wind,
+                    }
+                    fi, fr = calculate_fishing_index(astro_data, weather_data)
+                    moon_phase = astro_data['moon_phase']
+                    moon_illumination = astro_data['moon_illumination']
+                    lunar_day = astro_data['lunar_day']
+                    tide_type = astro_data['tide_type']
+                    fishing_index = fi
+                    fishing_reason = fr
+                    astro_description = get_astro_summary(astro_data, fi, fr)
+                    sunrise = astro_data.get('sunrise', '') or ''
+                    sunset_val = astro_data.get('sunset', '') or ''
+                    moonrise = astro_data.get('moonrise', '') or ''
+                    moonset = astro_data.get('moonset', '') or ''
+                    day_length = astro_data.get('day_length', '') or ''
+                    civil_twilight_begin = astro_data.get('civil_twilight_begin', '') or ''
+                    civil_twilight_end = astro_data.get('civil_twilight_end', '') or ''
+
             old_data = dict(log)
             new_data = {
                 'spot': spot,
@@ -385,7 +727,21 @@ def edit_log(log_id):
                 'created_at': created_at,
                 'temperature': temperature or None,
                 'humidity': humidity or None,
-                'wind': wind or None
+                'wind': wind or None,
+                'moon_phase': moon_phase or None,
+                'moon_illumination': float(moon_illumination) if moon_illumination else None,
+                'lunar_day': int(lunar_day) if lunar_day else None,
+                'tide_type': tide_type or None,
+                'fishing_index': int(fishing_index) if fishing_index else None,
+                'astro_description': astro_description or None,
+                'sunrise': sunrise or None,
+                'sunset': sunset_val or None,
+                'moonrise': moonrise or None,
+                'moonset': moonset or None,
+                'day_length': day_length or None,
+                'civil_twilight_begin': civil_twilight_begin or None,
+                'civil_twilight_end': civil_twilight_end or None,
+                'fishing_reason': fishing_reason or None,
             }
 
             batch_id = str(uuid.uuid4())
@@ -398,11 +754,19 @@ def edit_log(log_id):
                 UPDATE fishing_logs
                 SET spot = ?, weather = ?, water_level = ?, bait = ?, fish_species = ?,
                     harvest = ?, next_strategy = ?, next_strategy_date = ?, created_at = ?, temperature = ?,
-                    humidity = ?, wind = ?
+                    humidity = ?, wind = ?, moon_phase = ?, moon_illumination = ?, lunar_day = ?,
+                    tide_type = ?, fishing_index = ?, astro_description = ?,
+                    sunrise = ?, sunset = ?, moonrise = ?, moonset = ?, day_length = ?,
+                    civil_twilight_begin = ?, civil_twilight_end = ?, fishing_reason = ?
                 WHERE id = ?
             ''', (spot, weather, water_level, bait, fish_species, harvest,
                   next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None,
-                  wind or None, log_id))
+                  wind or None, moon_phase or None, float(moon_illumination) if moon_illumination else None,
+                  int(lunar_day) if lunar_day else None, tide_type or None,
+                  int(fishing_index) if fishing_index else None, astro_description or None,
+                  sunrise or None, sunset_val or None, moonrise or None, moonset or None,
+                  day_length or None, civil_twilight_begin or None, civil_twilight_end or None,
+                  fishing_reason or None, log_id))
 
             save_log_equipments(conn, log_id, equipment_data)
 
@@ -614,10 +978,52 @@ def add_log():
         if not spot or not weather or not water_level or not bait or not fish_species or not harvest:
             flash('请填写所有必填项！', 'error')
         else:
+            moon_phase = request.form.get('moon_phase', '').strip()
+            moon_illumination = request.form.get('moon_illumination', '').strip()
+            lunar_day = request.form.get('lunar_day', '').strip()
+            tide_type = request.form.get('tide_type', '').strip()
+            fishing_index = request.form.get('fishing_index', '').strip()
+            astro_description = request.form.get('astro_description', '').strip()
+            sunrise = request.form.get('sunrise', '').strip()
+            sunset_val = request.form.get('sunset', '').strip()
+            moonrise = request.form.get('moonrise', '').strip()
+            moonset = request.form.get('moonset', '').strip()
+            day_length = request.form.get('day_length', '').strip()
+            civil_twilight_begin = request.form.get('civil_twilight_begin', '').strip()
+            civil_twilight_end = request.form.get('civil_twilight_end', '').strip()
+            fishing_reason = request.form.get('fishing_reason', '').strip()
+
+            if not moon_phase:
+                astro_data = calculate_moon_phase(created_at)
+                if astro_data:
+                    external_data = fetch_external_astro_data(created_at)
+                    if external_data:
+                        astro_data.update(external_data)
+                    weather_data = {
+                        'weather': weather,
+                        'temperature': temperature,
+                        'wind': wind,
+                    }
+                    fi, fr = calculate_fishing_index(astro_data, weather_data)
+                    moon_phase = astro_data['moon_phase']
+                    moon_illumination = astro_data['moon_illumination']
+                    lunar_day = astro_data['lunar_day']
+                    tide_type = astro_data['tide_type']
+                    fishing_index = fi
+                    fishing_reason = fr
+                    astro_description = get_astro_summary(astro_data, fi, fr)
+                    sunrise = astro_data.get('sunrise', '') or ''
+                    sunset_val = astro_data.get('sunset', '') or ''
+                    moonrise = astro_data.get('moonrise', '') or ''
+                    moonset = astro_data.get('moonset', '') or ''
+                    day_length = astro_data.get('day_length', '') or ''
+                    civil_twilight_begin = astro_data.get('civil_twilight_begin', '') or ''
+                    civil_twilight_end = astro_data.get('civil_twilight_end', '') or ''
+
             cursor = conn.execute('''
-                INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date, created_at, temperature, humidity, wind)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None, wind or None))
+                INSERT INTO fishing_logs (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date, created_at, temperature, humidity, wind, moon_phase, moon_illumination, lunar_day, tide_type, fishing_index, astro_description, sunrise, sunset, moonrise, moonset, day_length, civil_twilight_begin, civil_twilight_end, fishing_reason)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (spot, weather, water_level, bait, fish_species, harvest, next_strategy, next_strategy_date or None, created_at, temperature or None, humidity or None, wind or None, moon_phase or None, float(moon_illumination) if moon_illumination else None, int(lunar_day) if lunar_day else None, tide_type or None, int(fishing_index) if fishing_index else None, astro_description or None, sunrise or None, sunset_val or None, moonrise or None, moonset or None, day_length or None, civil_twilight_begin or None, civil_twilight_end or None, fishing_reason or None))
             log_id = cursor.lastrowid
 
             save_log_equipments(conn, log_id, equipment_data)
@@ -710,6 +1116,37 @@ def log_detail(log_id):
     if harvest_value > 0 and total_equipment_cost > 0:
         cost_per_kg = round(total_equipment_cost / harvest_value, 2)
 
+    astro_info = None
+    if log['created_at']:
+        astro_calc = calculate_moon_phase(log['created_at'])
+        if astro_calc:
+            log_moon_phase = log['moon_phase'] if log['moon_phase'] else astro_calc['moon_phase']
+            log_tide_type = log['tide_type'] if log['tide_type'] else astro_calc['tide_type']
+            log_fishing_index = log['fishing_index'] if log['fishing_index'] else 5
+            log_astro_description = log['astro_description'] if log['astro_description'] else ''
+            log_moon_illumination = log['moon_illumination'] if log['moon_illumination'] else astro_calc['moon_illumination']
+            log_lunar_day = log['lunar_day'] if log['lunar_day'] else astro_calc['lunar_day']
+            log_fishing_reason = log['fishing_reason'] if 'fishing_reason' in log.keys() and log['fishing_reason'] else ''
+
+            astro_info = {
+                'moon_phase': log_moon_phase,
+                'moon_phase_icon': astro_calc['moon_phase_icon'],
+                'moon_illumination': log_moon_illumination,
+                'lunar_day': log_lunar_day,
+                'tide_type': log_tide_type,
+                'tide_name': TIDE_TYPES.get(log_tide_type, '中潮'),
+                'fishing_index': log_fishing_index,
+                'astro_description': log_astro_description,
+                'fishing_reason': log_fishing_reason,
+                'sunrise': log['sunrise'] if 'sunrise' in log.keys() and log['sunrise'] else None,
+                'sunset': log['sunset'] if 'sunset' in log.keys() and log['sunset'] else None,
+                'moonrise': log['moonrise'] if 'moonrise' in log.keys() and log['moonrise'] else None,
+                'moonset': log['moonset'] if 'moonset' in log.keys() and log['moonset'] else None,
+                'day_length': log['day_length'] if 'day_length' in log.keys() and log['day_length'] else None,
+                'civil_twilight_begin': log['civil_twilight_begin'] if 'civil_twilight_begin' in log.keys() and log['civil_twilight_begin'] else None,
+                'civil_twilight_end': log['civil_twilight_end'] if 'civil_twilight_end' in log.keys() and log['civil_twilight_end'] else None,
+            }
+
     conn.close()
     return render_template('detail.html', log=log, audit_logs=audit_logs,
                            page=page, sort_by=sort_by, per_page=per_page,
@@ -721,7 +1158,8 @@ def log_detail(log_id):
                            total_equipment_cost=total_equipment_cost,
                            harvest_value=harvest_value,
                            cost_per_kg=cost_per_kg,
-                           log_photos=log_photos)
+                           log_photos=log_photos,
+                           astro_info=astro_info)
 
 
 @app.route('/by-spot')
@@ -2239,6 +2677,59 @@ def api_weather_history():
         }), 500
     finally:
         conn.close()
+
+
+@app.route('/api/astro/data')
+def api_astro_data():
+    date_str = request.args.get('date', '').strip()
+    weather = request.args.get('weather', '').strip()
+    temperature = request.args.get('temperature', '').strip()
+    wind = request.args.get('wind', '').strip()
+
+    if not date_str:
+        date_str = datetime.now().strftime('%Y-%m-%d')
+
+    astro_data = calculate_moon_phase(date_str)
+    if not astro_data:
+        return jsonify({
+            'success': False,
+            'message': '无法计算天文数据，请检查日期格式'
+        }), 400
+
+    external_data = fetch_external_astro_data(date_str)
+    if external_data:
+        astro_data.update(external_data)
+
+    weather_data = {
+        'weather': weather,
+        'temperature': temperature,
+        'wind': wind,
+    }
+    fishing_index, fishing_reason = calculate_fishing_index(astro_data, weather_data)
+    astro_summary = get_astro_summary(astro_data, fishing_index, fishing_reason)
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'moon_phase': astro_data['moon_phase'],
+            'moon_phase_icon': astro_data['moon_phase_icon'],
+            'moon_illumination': astro_data['moon_illumination'],
+            'lunar_day': astro_data['lunar_day'],
+            'tide_type': astro_data['tide_type'],
+            'tide_name': astro_data['tide_name'],
+            'fishing_index': fishing_index,
+            'fishing_reason': fishing_reason,
+            'astro_summary': astro_summary,
+            'sunrise': astro_data.get('sunrise'),
+            'sunset': astro_data.get('sunset'),
+            'moonrise': astro_data.get('moonrise'),
+            'moonset': astro_data.get('moonset'),
+            'day_length': astro_data.get('day_length'),
+            'civil_twilight_begin': astro_data.get('civil_twilight_begin'),
+            'civil_twilight_end': astro_data.get('civil_twilight_end'),
+            'data_source': 'api+local' if external_data else 'local',
+        }
+    })
 
 
 @app.route('/api/spots/search')

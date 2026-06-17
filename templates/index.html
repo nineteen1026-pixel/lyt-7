@@ -139,6 +139,9 @@
                     <div class="log-header">
                         <span class="log-date">{{ log['created_at'] }}</span>
                         <span class="log-spot search-field" data-field="spot">📍 {{ log['spot'] }}</span>
+                        {% if log['fishing_index'] %}
+                        <span class="fishing-index-badge fishing-index-{{ 'good' if log['fishing_index'] >= 7 else ('medium' if log['fishing_index'] >= 4 else 'bad') }}">🎯 {{ log['fishing_index'] }}/10</span>
+                        {% endif %}
                     </div>
                     <div class="log-body">
                         <div class="log-row">

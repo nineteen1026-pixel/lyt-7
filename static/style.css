@@ -7409,3 +7409,298 @@ footer {
     }
 }
 
+.astro-panel {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #2d3a5c;
+    margin-top: 10px;
+}
+
+.astro-info-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.astro-info-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.astro-info-item:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
+}
+
+.astro-info-label {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.6);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.astro-info-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #e2e8f0;
+}
+
+.astro-index-good {
+    color: #68d391 !important;
+}
+
+.astro-index-medium {
+    color: #f6ad55 !important;
+}
+
+.astro-index-bad {
+    color: #fc8181 !important;
+}
+
+.astro-reason {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+    line-height: 1.7;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 8px;
+    border-left: 3px solid #667eea;
+}
+
+.astro-section {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e8ecff 100%) !important;
+    border: 1px solid #c3d0ff !important;
+}
+
+.astro-section h3 {
+    color: #2d3748;
+    margin-bottom: 16px;
+}
+
+.astro-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.astro-detail-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 12px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 10px;
+    border: 1px solid #d4dcff;
+    transition: all 0.2s ease;
+}
+
+.astro-detail-item:hover {
+    background: rgba(255, 255, 255, 0.9);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+}
+
+.astro-detail-item-full {
+    grid-column: 1 / -1;
+}
+
+.astro-detail-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.astro-detail-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.astro-detail-label {
+    font-size: 11px;
+    color: #718096;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.astro-detail-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #2d3748;
+}
+
+.astro-index-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.astro-index-badge.astro-index-good {
+    background: linear-gradient(135deg, #c6f6d5, #9ae6b4);
+    color: #22543d;
+}
+
+.astro-index-badge.astro-index-medium {
+    background: linear-gradient(135deg, #fefcbf, #faf089);
+    color: #744210;
+}
+
+.astro-index-badge.astro-index-bad {
+    background: linear-gradient(135deg, #fed7d7, #feb2b2);
+    color: #742a2a;
+}
+
+.astro-description {
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 10px;
+    border-left: 4px solid #667eea;
+    font-size: 14px;
+    color: #4a5568;
+    line-height: 1.8;
+}
+
+@media (max-width: 768px) {
+    .astro-info-grid,
+    .astro-detail-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 640px) {
+    .astro-info-grid,
+    .astro-detail-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .astro-detail-item-full {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 480px) {
+    .astro-info-grid,
+    .astro-detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.astro-sun-moon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px dashed #c3dafe;
+}
+
+.astro-sun-moon-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    transition: all 0.2s ease;
+}
+
+.astro-sun-moon-item:hover {
+    background: rgba(255, 255, 255, 0.8);
+    border-color: #667eea;
+    transform: translateY(-1px);
+}
+
+.astro-sun-moon-icon {
+    font-size: 22px;
+    flex-shrink: 0;
+}
+
+.astro-sun-moon-content {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.astro-reason-box {
+    margin-top: 16px;
+    padding: 16px;
+    background: linear-gradient(135deg, #ebf4ff, #e9d8fd);
+    border-radius: 10px;
+    border: 1px solid #c3dafe;
+}
+
+.astro-reason-header {
+    font-size: 14px;
+    font-weight: 600;
+    color: #2d3748;
+    margin-bottom: 8px;
+}
+
+.astro-reason-text {
+    font-size: 13px;
+    color: #4a5568;
+    line-height: 1.8;
+}
+
+.fishing-index-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.fishing-index-badge.fishing-index-good {
+    background: #c6f6d5;
+    color: #22543d;
+    border: 1px solid #9ae6b4;
+}
+
+.fishing-index-badge.fishing-index-medium {
+    background: #fefcbf;
+    color: #744210;
+    border: 1px solid #fbd38d;
+}
+
+.fishing-index-badge.fishing-index-bad {
+    background: #fed7d7;
+    color: #742a2a;
+    border: 1px solid #feb2b2;
+}
+
+.log-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 640px) {
+    .astro-sun-moon-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .astro-sun-moon-grid {
+        grid-template-columns: 1fr;
+    }
+}
+

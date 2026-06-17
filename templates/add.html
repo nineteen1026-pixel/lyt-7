@@ -69,6 +69,55 @@
                 </div>
             </div>
 
+            <div class="form-group full-width">
+                <div class="weather-toolbar">
+                    <label class="weather-label">🌌 天文潮汐</label>
+                    <div class="weather-actions">
+                        <button type="button" class="btn btn-small btn-weather-fetch" onclick="fetchAstroData()">🌙 获取天文数据</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="astro-panel" class="form-group full-width astro-panel" style="display:none;">
+                <div class="astro-info-grid">
+                    <div class="astro-info-item">
+                        <span class="astro-info-label">月相</span>
+                        <span class="astro-info-value" id="astro-moon-phase-display">--</span>
+                    </div>
+                    <div class="astro-info-item">
+                        <span class="astro-info-label">月面照明度</span>
+                        <span class="astro-info-value" id="astro-moon-illumination-display">--</span>
+                    </div>
+                    <div class="astro-info-item">
+                        <span class="astro-info-label">农历</span>
+                        <span class="astro-info-value" id="astro-lunar-day-display">--</span>
+                    </div>
+                    <div class="astro-info-item">
+                        <span class="astro-info-label">潮汐类型</span>
+                        <span class="astro-info-value" id="astro-tide-type-display">--</span>
+                    </div>
+                    <div class="astro-info-item">
+                        <span class="astro-info-label">适钓指数</span>
+                        <span class="astro-info-value" id="astro-fishing-index-display">--</span>
+                    </div>
+                </div>
+                <div class="astro-reason" id="astro-reason-display"></div>
+                <input type="hidden" id="moon_phase" name="moon_phase" value="">
+                <input type="hidden" id="moon_illumination" name="moon_illumination" value="">
+                <input type="hidden" id="lunar_day" name="lunar_day" value="">
+                <input type="hidden" id="tide_type" name="tide_type" value="">
+                <input type="hidden" id="fishing_index" name="fishing_index" value="">
+                <input type="hidden" id="astro_description" name="astro_description" value="">
+                <input type="hidden" id="sunrise" name="sunrise" value="">
+                <input type="hidden" id="sunset" name="sunset" value="">
+                <input type="hidden" id="moonrise" name="moonrise" value="">
+                <input type="hidden" id="moonset" name="moonset" value="">
+                <input type="hidden" id="day_length" name="day_length" value="">
+                <input type="hidden" id="civil_twilight_begin" name="civil_twilight_begin" value="">
+                <input type="hidden" id="civil_twilight_end" name="civil_twilight_end" value="">
+                <input type="hidden" id="fishing_reason" name="fishing_reason" value="">
+            </div>
+
             <div class="form-group">
                 <label for="water_level">水位 <span class="required">*</span></label>
                 <input type="text" id="water_level" name="water_level" placeholder="例如：正常/涨水/退水" required>
@@ -409,6 +458,67 @@
         }
         listEl.innerHTML = '<div class="weather-message ' + (type || 'info') + '">' + msg + '</div>';
     }
+
+    function fetchAstroData() {
+        var dateVal = document.getElementById('created_at').value;
+        if (!dateVal) {
+            alert('请先选择日期');
+            return;
+        }
+        var weather = document.getElementById('weather').value || '';
+        var temperature = document.getElementById('temperature').value || '';
+        var wind = document.getElementById('wind').value || '';
+
+        var params = 'date=' + encodeURIComponent(dateVal) +
+                     '&weather=' + encodeURIComponent(weather) +
+                     '&temperature=' + encodeURIComponent(temperature) +
+                     '&wind=' + encodeURIComponent(wind);
+
+        fetch('/api/astro/data?' + params)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    var d = data.data;
+                    document.getElementById('astro-panel').style.display = 'block';
+                    document.getElementById('astro-moon-phase-display').textContent = d.moon_phase_icon + ' ' + d.moon_phase;
+                    document.getElementById('astro-moon-illumination-display').textContent = d.moon_illumination + '%';
+                    document.getElementById('astro-lunar-day-display').textContent = '初' + d.lunar_day;
+                    document.getElementById('astro-tide-type-display').textContent = d.tide_name;
+
+                    var indexEl = document.getElementById('astro-fishing-index-display');
+                    indexEl.textContent = d.fishing_index + '/10';
+                    indexEl.className = 'astro-info-value astro-index-' + (d.fishing_index >= 7 ? 'good' : d.fishing_index >= 4 ? 'medium' : 'bad');
+
+                    document.getElementById('astro-reason-display').textContent = d.fishing_reason;
+
+                    document.getElementById('moon_phase').value = d.moon_phase;
+                    document.getElementById('moon_illumination').value = d.moon_illumination;
+                    document.getElementById('lunar_day').value = d.lunar_day;
+                    document.getElementById('tide_type').value = d.tide_type;
+                    document.getElementById('fishing_index').value = d.fishing_index;
+                    document.getElementById('astro_description').value = d.astro_summary;
+                    document.getElementById('sunrise').value = d.sunrise || '';
+                    document.getElementById('sunset').value = d.sunset || '';
+                    document.getElementById('moonrise').value = d.moonrise || '';
+                    document.getElementById('moonset').value = d.moonset || '';
+                    document.getElementById('day_length').value = d.day_length || '';
+                    document.getElementById('civil_twilight_begin').value = d.civil_twilight_begin || '';
+                    document.getElementById('civil_twilight_end').value = d.civil_twilight_end || '';
+                    document.getElementById('fishing_reason').value = d.fishing_reason || '';
+                } else {
+                    alert('获取天文数据失败：' + (data.message || '未知错误'));
+                }
+            })
+            .catch(function(err) {
+                alert('请求失败：' + err.message);
+            });
+    }
+
+    document.getElementById('created_at').addEventListener('change', function() {
+        if (document.getElementById('moon_phase').value) {
+            fetchAstroData();
+        }
+    });
 
     function fetchCurrentWeather() {
         var city = document.getElementById('city-input').value.trim();
