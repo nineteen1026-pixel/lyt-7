@@ -26,6 +26,7 @@
                 <a href="{{ url_for('heatmap') }}" class="{% if request.endpoint == 'heatmap' %}active{% endif %}">🗺️ 热力图</a>
                 <a href="{{ url_for('monthly_report') }}" class="{% if request.endpoint == 'monthly_report' %}active{% endif %}">📊 月度报告</a>
                 <a href="{{ url_for('compare_select') }}" class="{% if request.endpoint in ['compare_select', 'compare_results'] %}active{% endif %}">🔄 记录对比</a>
+                <a href="{{ url_for('spot_recommendation') }}" class="{% if request.endpoint == 'spot_recommendation' %}active{% endif %}">🎯 钓点推荐</a>
                 <a href="{{ url_for('recycle_bin') }}" class="{% if request.endpoint in ['recycle_bin', 'restore_item', 'permanent_delete_item', 'batch_restore', 'batch_permanent_delete'] %}active{% endif %}">🗑️ 回收站</a>
             </nav>
         </header>

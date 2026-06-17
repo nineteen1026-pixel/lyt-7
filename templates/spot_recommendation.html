@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+
+{% block title %}今日钓点推荐 - 钓点日志{% endblock %}
+
+{% block content %}
+    <div class="page-header">
+        <h2>🎯 今日钓点推荐</h2>
+        <span class="recommend-date">{{ today }}</span>
+    </div>
+
+    <div class="recommend-filter-card">
+        <div class="recommend-filter-title">
+            <span class="filter-icon">⚙️</span>
+            <span>设置今日条件</span>
+        </div>
+        <form method="get" action="{{ url_for('spot_recommendation') }}" class="recommend-filter-form">
+            <div class="filter-row">
+                <div class="filter-item">
+                    <label for="weather">今日天气</label>
+                    <select id="weather" name="weather">
+                        <option value="">全部天气</option>
+                        {% for w in common_weathers %}
+                            <option value="{{ w }}" {% if target_weather == w %}selected{% endif %}>{{ w }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-item">
+                    <label for="water_level">今日水位</label>
+                    <select id="water_level" name="water_level">
+                        <option value="">全部水位</option>
+                        {% for wl in common_water_levels %}
+                            <option value="{{ wl }}" {% if target_water_level == wl %}selected{% endif %}>{{ wl }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="filter-item filter-actions">
+                    <label>&nbsp;</label>
+                    <button type="submit" class="btn btn-primary">开始推荐</button>
+                    <a href="{{ url_for('spot_recommendation') }}" class="btn btn-secondary">重置</a>
+                </div>
+            </div>
+        </form>
+        {% if target_weather or target_water_level %}
+            <div class="current-conditions">
+                <span class="condition-label">当前条件：</span>
+                {% if target_weather %}
+                    <span class="condition-tag">🌤️ {{ target_weather }}</span>
+                {% endif %}
+                {% if target_water_level %}
+                    <span class="condition-tag">💧 {{ target_water_level }}</span>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+
+    {% if recommended_spots %}
+        <div class="recommend-stats-bar">
+            <div class="recommend-stat-item">
+                <span class="stat-icon">📊</span>
+                <span class="stat-label">共推荐</span>
+                <span class="stat-value">{{ recommended_spots|length }}</span>
+                <span class="stat-unit">个钓点</span>
+            </div>
+            {% if target_weather or target_water_level %}
+                <div class="recommend-stat-item">
+                    <span class="stat-icon">🎯</span>
+                    <span class="stat-label">匹配模式</span>
+                    <span class="stat-value">条件加权</span>
+                </div>
+            {% endif %}
+        </div>
+
+        <div class="recommend-list">
+            {% for spot in recommended_spots %}
+                <div class="recommend-card {% if spot.rank <= 3 %}recommend-top{% endif %}" data-rank="{{ spot.rank }}">
+                    <div class="recommend-rank">
+                        {% if spot.rank == 1 %}
+                            <span class="rank-badge rank-gold">🥇</span>
+                        {% elif spot.rank == 2 %}
+                            <span class="rank-badge rank-silver">🥈</span>
+                        {% elif spot.rank == 3 %}
+                            <span class="rank-badge rank-bronze">🥉</span>
+                        {% else %}
+                            <span class="rank-badge rank-normal">{{ spot.rank }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="recommend-content">
+                        <div class="recommend-header">
+                            <h3 class="recommend-spot-name">
+                                <a href="{{ url_for('by_spot', spot=spot.name) }}">{{ spot.name }}</a>
+                            </h3>
+                            <div class="recommend-score">
+                                <span class="score-label">推荐指数</span>
+                                <span class="score-value">{{ spot.score }}</span>
+                            </div>
+                        </div>
+
+                        <div class="recommend-stats-grid">
+                            <div class="stat-box">
+                                <span class="stat-box-icon">🎣</span>
+                                <div class="stat-box-info">
+                                    <span class="stat-box-value">{{ spot.stats.total_count }}</span>
+                                    <span class="stat-box-label">出钓次数</span>
+                                </div>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-box-icon">📈</span>
+                                <div class="stat-box-info">
+                                    <span class="stat-box-value">{{ spot.stats.avg_harvest }}</span>
+                                    <span class="stat-box-label">平均收获</span>
+                                </div>
+                            </div>
+                            <div class="stat-box {% if spot.stats.skunk_rate > 30 %}stat-box-warning{% endif %}">
+                                <span class="stat-box-icon">🦨</span>
+                                <div class="stat-box-info">
+                                    <span class="stat-box-value">{{ spot.stats.skunk_rate }}%</span>
+                                    <span class="stat-box-label">空军率</span>
+                                </div>
+                            </div>
+                            <div class="stat-box">
+                                <span class="stat-box-icon">🏆</span>
+                                <div class="stat-box-info">
+                                    <span class="stat-box-value">{{ spot.stats.total_harvest }}</span>
+                                    <span class="stat-box-label">累计收获</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if spot.stats.best_weather or spot.stats.best_water_level %}
+                            <div class="recommend-best-conditions">
+                                {% if spot.stats.best_weather %}
+                                    <div class="best-condition-item">
+                                        <span class="best-condition-label">最佳天气：</span>
+                                        <span class="best-condition-value">🌤️ {{ spot.stats.best_weather }}</span>
+                                        {% if target_weather and spot.stats.best_weather == target_weather %}
+                                            <span class="match-badge">✓ 匹配</span>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                                {% if spot.stats.best_water_level %}
+                                    <div class="best-condition-item">
+                                        <span class="best-condition-label">最佳水位：</span>
+                                        <span class="best-condition-value">💧 {{ spot.stats.best_water_level }}</span>
+                                        {% if target_water_level and spot.stats.best_water_level == target_water_level %}
+                                            <span class="match-badge">✓ 匹配</span>
+                                        {% endif %}
+                                    </div>
+                                {% endif %}
+                            </div>
+                        {% endif %}
+
+                        {% if target_weather and spot.stats.weather_stats.get(target_weather) %}
+                            <div class="condition-detail">
+                                <span class="detail-label">{{ target_weather }}天气下：</span>
+                                <span class="detail-value">平均收获 {{ spot.stats.weather_stats[target_weather]['avg_harvest'] }}（{{ spot.stats.weather_stats[target_weather]['count'] }}次记录）</span>
+                            </div>
+                        {% endif %}
+
+                        {% if target_water_level and spot.stats.water_level_stats.get(target_water_level) %}
+                            <div class="condition-detail">
+                                <span class="detail-label">{{ target_water_level }}水位下：</span>
+                                <span class="detail-value">平均收获 {{ spot.stats.water_level_stats[target_water_level]['avg_harvest'] }}（{{ spot.stats.water_level_stats[target_water_level]['count'] }}次记录）</span>
+                            </div>
+                        {% endif %}
+
+                        {% if spot.stats.last_log_date %}
+                            <div class="recommend-footer">
+                                <span class="last-log">最近记录：{{ spot.stats.last_log_date }}</span>
+                                <a href="{{ url_for('by_spot', spot=spot.name) }}" class="btn btn-small">查看详情</a>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <div class="recommend-algorithm-note">
+            <h4>📐 推荐算法说明</h4>
+            <p>综合评分 = 历史出鱼表现(40%) + 天气匹配度(30%) + 水位匹配度(30%)</p>
+            <p>• 历史出鱼表现：平均收获量 × (1 - 空军率惩罚系数)</p>
+            <p>• 天气匹配度：目标天气下平均收获 / 钓点总体平均收获</p>
+            <p>• 水位匹配度：目标水位下平均收获 / 钓点总体平均收获</p>
+            <p>• 数据量不足3次的钓点会降低置信度权重</p>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <p>暂无推荐钓点，请先添加垂钓记录</p>
+            <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>
+        </div>
+    {% endif %}
+{% endblock %}

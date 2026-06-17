@@ -4135,6 +4135,300 @@ def wiki_import_spot(spot_name):
     return redirect(url_for('wiki_edit', wiki_id=cursor.lastrowid))
 
 
+def get_spot_harvest_stats(conn, spot_name):
+    rows = conn.execute('''
+        SELECT harvest, weather, water_level, created_at
+        FROM fishing_logs
+        WHERE spot = ? AND deleted_at IS NULL
+        ORDER BY created_at DESC
+    ''', (spot_name,)).fetchall()
+
+    total_count = len(rows)
+    if total_count == 0:
+        return {
+            'total_count': 0,
+            'avg_harvest': 0,
+            'total_harvest': 0,
+            'skunk_count': 0,
+            'skunk_rate': 0,
+            'weather_stats': {},
+            'water_level_stats': {},
+            'best_weather': '',
+            'best_water_level': '',
+            'last_log_date': None
+        }
+
+    harvest_values = []
+    skunk_count = 0
+    weather_harvests = {}
+    water_level_harvests = {}
+    last_date = None
+
+    for row in rows:
+        val = parse_harvest_value(row['harvest'])
+        harvest_values.append(val)
+        if val == 0:
+            skunk_count += 1
+
+        weather = row['weather'] or '未知'
+        if weather not in weather_harvests:
+            weather_harvests[weather] = []
+        weather_harvests[weather].append(val)
+
+        water_level = row['water_level'] or '未知'
+        if water_level not in water_level_harvests:
+            water_level_harvests[water_level] = []
+        water_level_harvests[water_level].append(val)
+
+        if last_date is None:
+            last_date = row['created_at']
+
+    avg_harvest = round(sum(harvest_values) / total_count, 2) if total_count > 0 else 0
+    total_harvest = sum(harvest_values)
+    skunk_rate = round((skunk_count / total_count) * 100, 1) if total_count > 0 else 0
+
+    weather_stats = {}
+    best_weather = ''
+    best_weather_avg = -1
+    for w, vals in weather_harvests.items():
+        w_avg = round(sum(vals) / len(vals), 2) if vals else 0
+        w_count = len(vals)
+        weather_stats[w] = {
+            'avg_harvest': w_avg,
+            'count': w_count,
+            'total_harvest': sum(vals)
+        }
+        if w_avg > best_weather_avg and w_count >= 1:
+            best_weather_avg = w_avg
+            best_weather = w
+
+    water_level_stats = {}
+    best_water_level = ''
+    best_wl_avg = -1
+    for wl, vals in water_level_harvests.items():
+        wl_avg = round(sum(vals) / len(vals), 2) if vals else 0
+        wl_count = len(vals)
+        water_level_stats[wl] = {
+            'avg_harvest': wl_avg,
+            'count': wl_count,
+            'total_harvest': sum(vals)
+        }
+        if wl_avg > best_wl_avg and wl_count >= 1:
+            best_wl_avg = wl_avg
+            best_water_level = wl
+
+    return {
+        'total_count': total_count,
+        'avg_harvest': avg_harvest,
+        'total_harvest': total_harvest,
+        'skunk_count': skunk_count,
+        'skunk_rate': skunk_rate,
+        'weather_stats': weather_stats,
+        'water_level_stats': water_level_stats,
+        'best_weather': best_weather,
+        'best_water_level': best_water_level,
+        'last_log_date': last_date
+    }
+
+
+def get_weather_match_score(spot_stats, target_weather):
+    if not target_weather:
+        return 0.5
+
+    weather_stats = spot_stats['weather_stats']
+    if not weather_stats:
+        return 0.5
+
+    if target_weather in weather_stats:
+        w_stat = weather_stats[target_weather]
+        spot_avg = spot_stats['avg_harvest']
+        if spot_avg > 0:
+            score = w_stat['avg_harvest'] / spot_avg
+            return min(score, 2.0)
+        return 0.5
+
+    similar_weather = find_similar_weather(target_weather, weather_stats)
+    if similar_weather:
+        w_stat = weather_stats[similar_weather]
+        spot_avg = spot_stats['avg_harvest']
+        if spot_avg > 0:
+            score = (w_stat['avg_harvest'] / spot_avg) * 0.8
+            return min(score, 1.6)
+        return 0.4
+
+    return 0.3
+
+
+def find_similar_weather(target_weather, weather_stats):
+    weather_groups = {
+        '晴': ['晴', 'Sunny', '晴天'],
+        '多云': ['多云', '阴', '阴天', 'Cloudy'],
+        '小雨': ['小雨', '雨', '阵雨', '毛毛雨', 'Rain'],
+        '大雨': ['大雨', '暴雨', '中雨', '雷阵雨'],
+        '雪': ['雪', '小雪', '大雪', 'Snow']
+    }
+
+    target_group = None
+    for group, weathers in weather_groups.items():
+        if target_weather in weathers:
+            target_group = group
+            break
+
+    if target_group:
+        for w in weather_groups.get(target_group, []):
+            if w in weather_stats:
+                return w
+
+    return None
+
+
+def get_water_level_match_score(spot_stats, target_water_level):
+    if not target_water_level:
+        return 0.5
+
+    water_level_stats = spot_stats['water_level_stats']
+    if not water_level_stats:
+        return 0.5
+
+    if target_water_level in water_level_stats:
+        wl_stat = water_level_stats[target_water_level]
+        spot_avg = spot_stats['avg_harvest']
+        if spot_avg > 0:
+            score = wl_stat['avg_harvest'] / spot_avg
+            return min(score, 2.0)
+        return 0.5
+
+    similar_wl = find_similar_water_level(target_water_level, water_level_stats)
+    if similar_wl:
+        wl_stat = water_level_stats[similar_wl]
+        spot_avg = spot_stats['avg_harvest']
+        if spot_avg > 0:
+            score = (wl_stat['avg_harvest'] / spot_avg) * 0.7
+            return min(score, 1.4)
+        return 0.35
+
+    return 0.3
+
+
+def find_similar_water_level(target_wl, water_level_stats):
+    wl_groups = {
+        '高': ['高', '偏高', '涨水', 'High', '高水位'],
+        '正常': ['正常', 'Normal', '适中', '中水位'],
+        '低': ['低', '偏低', '退水', 'Low', '低水位', '枯水']
+    }
+
+    target_group = None
+    for group, levels in wl_groups.items():
+        if target_wl in levels:
+            target_group = group
+            break
+
+    if target_group:
+        for wl in wl_groups.get(target_group, []):
+            if wl in water_level_stats:
+                return wl
+
+    return None
+
+
+def calculate_spot_score(spot_stats, target_weather, target_water_level):
+    harvest_performance = spot_stats['avg_harvest']
+    skunk_penalty = spot_stats['skunk_rate'] / 100.0
+
+    base_harvest_score = harvest_performance * (1 - skunk_penalty * 0.5)
+
+    weather_score = get_weather_match_score(spot_stats, target_weather)
+    water_level_score = get_water_level_match_score(spot_stats, target_water_level)
+
+    total_score = (base_harvest_score * 0.4) + (weather_score * harvest_performance * 0.3) + (water_level_score * harvest_performance * 0.3)
+
+    if spot_stats['total_count'] < 3:
+        data_confidence = spot_stats['total_count'] / 3.0
+        total_score = total_score * (0.5 + data_confidence * 0.5)
+
+    return round(total_score, 2)
+
+
+def get_recommended_spots(conn, target_weather='', target_water_level='', limit=10):
+    spot_names = conn.execute('''
+        SELECT DISTINCT spot FROM fishing_logs
+        WHERE spot IS NOT NULL AND spot != '' AND deleted_at IS NULL
+    ''').fetchall()
+
+    spots_data = []
+    for row in spot_names:
+        spot_name = row['spot']
+        stats = get_spot_harvest_stats(conn, spot_name)
+
+        if stats['total_count'] == 0:
+            continue
+
+        score = calculate_spot_score(stats, target_weather, target_water_level)
+
+        spots_data.append({
+            'name': spot_name,
+            'score': score,
+            'stats': stats
+        })
+
+    spots_data.sort(key=lambda x: x['score'], reverse=True)
+
+    for idx, spot in enumerate(spots_data, 1):
+        spot['rank'] = idx
+
+    return spots_data[:limit]
+
+
+def get_common_weathers(conn):
+    rows = conn.execute('''
+        SELECT DISTINCT weather FROM fishing_logs
+        WHERE weather IS NOT NULL AND weather != '' AND deleted_at IS NULL
+        ORDER BY weather
+    ''').fetchall()
+    return [r['weather'] for r in rows]
+
+
+def get_common_water_levels(conn):
+    rows = conn.execute('''
+        SELECT DISTINCT water_level FROM fishing_logs
+        WHERE water_level IS NOT NULL AND water_level != '' AND deleted_at IS NULL
+        ORDER BY water_level
+    ''').fetchall()
+    return [r['water_level'] for r in rows]
+
+
+@app.route('/recommend')
+def spot_recommendation():
+    conn = get_db()
+
+    target_weather = request.args.get('weather', '').strip()
+    target_water_level = request.args.get('water_level', '').strip()
+
+    common_weathers = get_common_weathers(conn)
+    common_water_levels = get_common_water_levels(conn)
+
+    recommended_spots = get_recommended_spots(
+        conn,
+        target_weather=target_weather,
+        target_water_level=target_water_level,
+        limit=20
+    )
+
+    today = datetime.now().strftime('%Y年%m月%d日')
+
+    conn.close()
+
+    return render_template(
+        'spot_recommendation.html',
+        recommended_spots=recommended_spots,
+        target_weather=target_weather,
+        target_water_level=target_water_level,
+        common_weathers=common_weathers,
+        common_water_levels=common_water_levels,
+        today=today
+    )
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='127.0.0.1', port=5000)
