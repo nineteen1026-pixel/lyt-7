@@ -17,6 +17,25 @@
                 <a href="{{ url_for('wiki_list') }}" class="{% if request.endpoint in ['wiki_list', 'wiki_detail', 'wiki_add', 'wiki_edit'] %}active{% endif %}">📚 钓点百科</a>
                 <a href="{{ url_for('spots_list', filter='favorite') }}" class="{% if request.endpoint == 'spots_list' and request.args.get('filter') == 'favorite' %}active{% endif %}">⭐ 收藏评分</a>
                 <a href="{{ url_for('by_spot') }}" class="{% if request.endpoint == 'by_spot' %}active{% endif %}">按钓点</a>
+                {% if recent_active_spots %}
+                <div class="nav-dropdown">
+                    <a href="javascript:void(0)" class="nav-dropdown-trigger {% if request.endpoint == 'by_spot' and request.args.get('spot') %}active{% endif %}">
+                        🕐 最近活跃 ▾
+                    </a>
+                    <div class="nav-dropdown-menu">
+                        {% for spot in recent_active_spots %}
+                        <a href="{{ url_for('by_spot', spot=spot.name) }}"
+                           class="nav-dropdown-item {% if request.endpoint == 'by_spot' and request.args.get('spot') == spot.name %}active{% endif %}">
+                            <span class="nav-dropdown-item-name">{{ spot.name }}</span>
+                            <span class="nav-dropdown-item-meta">
+                                <span>📅 {{ spot.last_active }}</span>
+                                <span>🎣 {{ spot.visit_count }}次</span>
+                            </span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
                 <a href="{{ url_for('by_date') }}" class="{% if request.endpoint == 'by_date' %}active{% endif %}">按日期</a>
                 <a href="{{ url_for('gallery') }}" class="{% if request.endpoint == 'gallery' %}active{% endif %}">📷 相册</a>
                 <a href="{{ url_for('search_logs') }}" class="{% if request.endpoint == 'search_logs' %}active{% endif %}">🔍 检索</a>

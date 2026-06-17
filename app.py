@@ -5041,6 +5041,27 @@ def spot_recommendation():
     )
 
 
+def get_recent_active_spots(limit=5):
+    conn = get_db()
+    try:
+        rows = conn.execute('''
+            SELECT spot, MAX(created_at) as last_active, COUNT(*) as visit_count
+            FROM fishing_logs
+            WHERE deleted_at IS NULL AND spot IS NOT NULL AND spot != ''
+            GROUP BY spot
+            ORDER BY last_active DESC, visit_count DESC
+            LIMIT ?
+        ''', (limit,)).fetchall()
+        return [{'name': r['spot'], 'last_active': r['last_active'], 'visit_count': r['visit_count']} for r in rows]
+    finally:
+        conn.close()
+
+
+@app.context_processor
+def inject_recent_spots():
+    return dict(recent_active_spots=get_recent_active_spots())
+
+
 if __name__ == '__main__':
     init_db()
     app.run(debug=True, host='127.0.0.1', port=5000)
