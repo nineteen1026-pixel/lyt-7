@@ -4676,12 +4676,12 @@ def get_spot_harvest_stats(conn, spot_name):
         if val == 0:
             skunk_count += 1
 
-        weather = row['weather'] or '未知'
+        weather = normalize_weather_desc(row['weather']) or '未知'
         if weather not in weather_harvests:
             weather_harvests[weather] = []
         weather_harvests[weather].append(val)
 
-        water_level = row['water_level'] or '未知'
+        water_level = normalize_water_level(row['water_level']) or '未知'
         if water_level not in water_level_harvests:
             water_level_harvests[water_level] = []
         water_level_harvests[water_level].append(val)
@@ -4759,15 +4759,6 @@ def get_weather_match_score(spot_stats, target_weather):
             return min(score, 2.0)
         return 0.5
 
-    similar_weather = find_similar_weather(target_weather, weather_stats)
-    if similar_weather:
-        w_stat = weather_stats[similar_weather]
-        spot_avg = spot_stats['avg_harvest']
-        if spot_avg > 0:
-            score = (w_stat['avg_harvest'] / spot_avg) * 0.8
-            return min(score, 1.6)
-        return 0.4
-
     return 0.3
 
 
@@ -4815,15 +4806,6 @@ def get_water_level_match_score(spot_stats, target_water_level):
             score = wl_stat['avg_harvest'] / spot_avg
             return min(score, 2.0)
         return 0.5
-
-    similar_wl = find_similar_water_level(target_water_level, water_level_stats)
-    if similar_wl:
-        wl_stat = water_level_stats[similar_wl]
-        spot_avg = spot_stats['avg_harvest']
-        if spot_avg > 0:
-            score = (wl_stat['avg_harvest'] / spot_avg) * 0.7
-            return min(score, 1.4)
-        return 0.35
 
     return 0.3
 
