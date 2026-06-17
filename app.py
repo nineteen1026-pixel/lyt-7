@@ -628,6 +628,8 @@ def edit_log(log_id):
     equipment_list = get_all_equipments(conn)
     log_equipments, total_eq_cost = get_log_equipments(conn, log_id)
     log_photos = get_log_photos(conn, log_id)
+    common_weathers = get_common_weathers(conn)
+    common_water_levels = get_common_water_levels(conn)
 
     if log is None:
         conn.close()
@@ -788,7 +790,9 @@ def edit_log(log_id):
                            common_species=common_species, harvest_templates=harvest_templates,
                            equipment_list=equipment_list, log_equipments=log_equipments,
                            total_equipment_cost=total_eq_cost,
-                           log_photos=log_photos)
+                           log_photos=log_photos,
+                           common_weathers=common_weathers,
+                           common_water_levels=common_water_levels)
 
 
 def get_upcoming_strategies(conn):
@@ -939,6 +943,10 @@ def add_log():
     common_species = get_common_species(conn)
     harvest_templates = get_harvest_templates(conn)
     equipment_list = get_all_equipments(conn)
+    common_weathers = get_common_weathers(conn)
+    common_water_levels = get_common_water_levels(conn)
+    latest_weather = get_latest_weather(conn)
+    latest_water_level = get_latest_water_level(conn)
 
     if request.method == 'POST':
         spot = request.form['spot'].strip()
@@ -1043,7 +1051,10 @@ def add_log():
     return render_template('add.html', bait_list=bait_list, default_city=WEATHER_API_CONFIG['city'],
                            common_species=common_species, harvest_templates=harvest_templates,
                            equipment_list=equipment_list, log_equipments=[], total_equipment_cost=0,
-                           log_photos=[])
+                           log_photos=[], common_weathers=common_weathers,
+                           common_water_levels=common_water_levels,
+                           latest_weather=latest_weather,
+                           latest_water_level=latest_water_level)
 
 
 @app.route('/log/<int:log_id>')
@@ -4898,6 +4909,26 @@ def get_common_water_levels(conn):
         ORDER BY water_level
     ''').fetchall()
     return [r['water_level'] for r in rows]
+
+
+def get_latest_weather(conn):
+    row = conn.execute('''
+        SELECT weather, temperature, humidity, wind FROM fishing_logs
+        WHERE weather IS NOT NULL AND weather != '' AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+    ''').fetchone()
+    return dict(row) if row else None
+
+
+def get_latest_water_level(conn):
+    row = conn.execute('''
+        SELECT water_level FROM fishing_logs
+        WHERE water_level IS NOT NULL AND water_level != '' AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1
+    ''').fetchone()
+    return row['water_level'] if row else ''
 
 
 def normalize_weather_desc(weather_desc):

@@ -41,22 +41,32 @@
 
             <div class="form-group">
                 <label for="weather">天气状况 <span class="required">*</span></label>
-                <input type="text" id="weather" name="weather" placeholder="例如：晴转多云 25℃" required>
+                <div class="bait-select-wrapper">
+                    <select id="weather-select" onchange="handleWeatherSelect()">
+                        <option value="">-- 选择历史天气 --</option>
+                        {% if common_weathers %}
+                            {% for w in common_weathers %}
+                                <option value="{{ w }}">{{ w }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <input type="text" id="weather" name="weather" placeholder="例如：晴转多云 25℃" required value="{% if latest_weather %}{{ latest_weather.weather }}{% endif %}">
+                </div>
             </div>
 
             <div class="form-group">
                 <label for="temperature">温度</label>
-                <input type="text" id="temperature" name="temperature" placeholder="例如：25℃">
+                <input type="text" id="temperature" name="temperature" placeholder="例如：25℃" value="{% if latest_weather %}{{ latest_weather.temperature or '' }}{% endif %}">
             </div>
 
             <div class="form-group">
                 <label for="humidity">湿度</label>
-                <input type="text" id="humidity" name="humidity" placeholder="例如：65%">
+                <input type="text" id="humidity" name="humidity" placeholder="例如：65%" value="{% if latest_weather %}{{ latest_weather.humidity or '' }}{% endif %}">
             </div>
 
             <div class="form-group">
                 <label for="wind">风力</label>
-                <input type="text" id="wind" name="wind" placeholder="例如：东北风 10km/h">
+                <input type="text" id="wind" name="wind" placeholder="例如：东北风 10km/h" value="{% if latest_weather %}{{ latest_weather.wind or '' }}{% endif %}">
             </div>
 
             <div id="history-panel" class="form-group full-width history-panel" style="display:none;">
@@ -120,7 +130,17 @@
 
             <div class="form-group">
                 <label for="water_level">水位 <span class="required">*</span></label>
-                <input type="text" id="water_level" name="water_level" placeholder="例如：正常/涨水/退水" required>
+                <div class="bait-select-wrapper">
+                    <select id="water-level-select" onchange="handleWaterLevelSelect()">
+                        <option value="">-- 选择历史水位 --</option>
+                        {% if common_water_levels %}
+                            {% for wl in common_water_levels %}
+                                <option value="{{ wl }}">{{ wl }}</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                    <input type="text" id="water_level" name="water_level" placeholder="例如：正常/涨水/退水" required value="{{ latest_water_level }}">
+                </div>
             </div>
 
             <div class="form-group">
@@ -444,6 +464,24 @@
     function handleBaitSelect() {
         var select = document.getElementById('bait-select');
         var input = document.getElementById('bait');
+        if (select.value) {
+            input.value = select.value;
+            select.value = '';
+        }
+    }
+
+    function handleWeatherSelect() {
+        var select = document.getElementById('weather-select');
+        var input = document.getElementById('weather');
+        if (select.value) {
+            input.value = select.value;
+            select.value = '';
+        }
+    }
+
+    function handleWaterLevelSelect() {
+        var select = document.getElementById('water-level-select');
+        var input = document.getElementById('water_level');
         if (select.value) {
             input.value = select.value;
             select.value = '';
