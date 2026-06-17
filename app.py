@@ -854,6 +854,7 @@ def spots_list():
         spot_dict = dict(spot)
         spot_dict['visit_count'] = get_spot_visit_count(conn, spot['name'])
         spot_dict['avg_rating'] = round(spot_dict['avg_rating'], 1) if spot_dict['avg_rating'] else 0
+        spot_dict['skunk_stats'] = get_spot_skunk_stats(conn, spot['name'])
         spot_list.append(spot_dict)
 
     conn.close()
@@ -1287,6 +1288,65 @@ def batch_rename_spots():
         conn.close()
 
     return redirect(url_for('spots_list'))
+
+
+def is_skunked(harvest_str):
+    if not harvest_str:
+        return True
+    harvest_str = str(harvest_str).strip()
+    if not harvest_str:
+        return True
+
+    zero_keywords = [
+        '空军', '白板', '打龟', '空手', '空竿', '光头',
+        '没钓到', '无收获', '零收获', '零', '0', '打飞机',
+        '参军', '空', '龟', '白跑一趟', '参军了', '空军了'
+    ]
+    lower_str = harvest_str.lower()
+    for kw in zero_keywords:
+        if kw.lower() in lower_str:
+            return True
+    return False
+
+
+def get_spot_skunk_stats(conn, spot_name):
+    rows = conn.execute('''
+        SELECT harvest FROM fishing_logs
+        WHERE spot = ? AND deleted_at IS NULL
+    ''', (spot_name,)).fetchall()
+
+    total_count = len(rows)
+    if total_count == 0:
+        return {
+            'skunk_count': 0,
+            'total_count': 0,
+            'skunk_rate': 0.0,
+            'has_skunk': False,
+            'recent_skunk': False
+        }
+
+    skunk_count = sum(1 for r in rows if is_skunked(r['harvest']))
+    skunk_rate = round((skunk_count / total_count) * 100, 1)
+
+    recent_skunk = False
+    recent_rows = conn.execute('''
+        SELECT harvest FROM fishing_logs
+        WHERE spot = ? AND deleted_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT 3
+    ''', (spot_name,)).fetchall()
+    for r in recent_rows:
+        if is_skunked(r['harvest']):
+            recent_skunk = True
+            break
+
+    return {
+        'skunk_count': skunk_count,
+        'total_count': total_count,
+        'skunk_rate': skunk_rate,
+        'has_skunk': skunk_count > 0,
+        'recent_skunk': recent_skunk
+    }
 
 
 def parse_harvest_value(harvest_str):

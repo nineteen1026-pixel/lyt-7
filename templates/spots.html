@@ -48,7 +48,7 @@
     {% if spots %}
         <div class="spot-grid">
             {% for spot in spots %}
-                <div class="spot-card" data-spot-id="{{ spot['id'] }}" data-spot-name="{{ spot['name'] }}">
+                <div class="spot-card {% if spot['skunk_stats']['has_skunk'] %}spot-card-skunked{% endif %} {% if spot['skunk_stats']['recent_skunk'] %}spot-card-recent-skunk{% endif %}" data-spot-id="{{ spot['id'] }}" data-spot-name="{{ spot['name'] }}">
                     <div class="batch-checkbox" style="display: none;">
                         <label class="item-checkbox">
                             <input type="checkbox" class="spot-checkbox" value="{{ spot['id'] }}" onchange="updateSelectionState()">
@@ -58,6 +58,11 @@
                         <div class="spot-title-row">
                             <h3 class="spot-name">
                                 <a href="{{ url_for('spot_detail', spot_id=spot['id']) }}">{{ spot['name'] }}</a>
+                                {% if spot['skunk_stats']['has_skunk'] %}
+                                    <span class="skunk-badge {% if spot['skunk_stats']['recent_skunk'] %}skunk-badge-recent{% endif %}" title="空军率 {{ spot['skunk_stats']['skunk_rate'] }}%">
+                                        🦨 空军
+                                    </span>
+                                {% endif %}
                             </h3>
                             <button class="favorite-btn {% if spot['is_favorite'] %}favorited{% endif %}"
                                     data-spot-id="{{ spot['id'] }}"
@@ -84,6 +89,18 @@
                                 📍 到访 {{ spot['visit_count'] }} 次
                             </div>
                         </div>
+                        {% if spot['skunk_stats']['total_count'] > 0 %}
+                        <div class="spot-skunk-stats">
+                            <div class="skunk-rate-container">
+                                <span class="skunk-rate-label">空军率</span>
+                                <div class="skunk-rate-bar">
+                                    <div class="skunk-rate-fill" style="width: {{ spot['skunk_stats']['skunk_rate'] }}%"></div>
+                                </div>
+                                <span class="skunk-rate-value">{{ spot['skunk_stats']['skunk_rate'] }}%</span>
+                            </div>
+                            <span class="skunk-count-text">({{ spot['skunk_stats']['skunk_count'] }}/{{ spot['skunk_stats']['total_count'] }}次)</span>
+                        </div>
+                        {% endif %}
                     </div>
 
                     {% if spot['description'] %}

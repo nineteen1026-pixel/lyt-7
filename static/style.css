@@ -3127,6 +3127,140 @@ footer {
     gap: 8px;
 }
 
+.spot-card-skunked {
+    border: 2px solid #fc8181;
+    background: linear-gradient(135deg, #fff5f5, #fffaf0);
+}
+
+.spot-card-skunked:hover {
+    border-color: #f56565;
+    box-shadow: 0 6px 20px rgba(245, 101, 101, 0.15);
+}
+
+.spot-card-recent-skunk {
+    animation: skunk-pulse 2s ease-in-out infinite;
+}
+
+@keyframes skunk-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(245, 101, 101, 0.4);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(245, 101, 101, 0);
+    }
+}
+
+.skunk-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    background: linear-gradient(135deg, #fc8181, #f56565);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 12px;
+    margin-left: 8px;
+    vertical-align: middle;
+    cursor: help;
+    animation: skunk-badge-bounce 1s ease-in-out;
+}
+
+@keyframes skunk-badge-bounce {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+}
+
+.skunk-badge-recent {
+    background: linear-gradient(135deg, #f56565, #e53e3e);
+    animation: skunk-badge-flash 1.5s ease-in-out infinite;
+}
+
+@keyframes skunk-badge-flash {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.7;
+    }
+}
+
+.spot-skunk-stats {
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: #fff5f5;
+    border-radius: 8px;
+    border: 1px solid #fed7d7;
+}
+
+.skunk-rate-container {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 4px;
+}
+
+.skunk-rate-label {
+    font-size: 12px;
+    color: #c53030;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.skunk-rate-bar {
+    flex: 1;
+    height: 14px;
+    background: #fed7d7;
+    border-radius: 7px;
+    overflow: hidden;
+    min-width: 80px;
+}
+
+.skunk-rate-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #fc8181, #e53e3e);
+    border-radius: 7px;
+    transition: width 0.5s ease;
+    min-width: 4px;
+}
+
+.skunk-rate-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: #c53030;
+    min-width: 45px;
+    text-align: right;
+}
+
+.skunk-count-text {
+    font-size: 11px;
+    color: #a0aec0;
+    margin-left: 4px;
+}
+
+@media (max-width: 640px) {
+    .skunk-badge {
+        margin-left: 4px;
+        padding: 2px 8px;
+        font-size: 10px;
+    }
+
+    .skunk-rate-container {
+        gap: 6px;
+    }
+
+    .skunk-rate-label {
+        font-size: 11px;
+    }
+
+    .skunk-rate-value {
+        font-size: 12px;
+        min-width: 40px;
+    }
+}
+
 @media (max-width: 640px) {
     .invitation-detail-header {
         flex-direction: column;
