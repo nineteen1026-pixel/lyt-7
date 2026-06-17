@@ -4232,12 +4232,18 @@ def get_spot_harvest_stats(conn, spot_name):
 
 
 def get_weather_match_score(spot_stats, target_weather):
-    if not target_weather:
-        return 0.5
-
     weather_stats = spot_stats['weather_stats']
     if not weather_stats:
         return 0.5
+
+    if not target_weather:
+        best_w = spot_stats.get('best_weather', '')
+        if best_w and best_w in weather_stats:
+            spot_avg = spot_stats['avg_harvest']
+            if spot_avg > 0:
+                score = weather_stats[best_w]['avg_harvest'] / spot_avg
+                return min(score, 1.5)
+        return 0.8
 
     if target_weather in weather_stats:
         w_stat = weather_stats[target_weather]
@@ -4283,12 +4289,18 @@ def find_similar_weather(target_weather, weather_stats):
 
 
 def get_water_level_match_score(spot_stats, target_water_level):
-    if not target_water_level:
-        return 0.5
-
     water_level_stats = spot_stats['water_level_stats']
     if not water_level_stats:
         return 0.5
+
+    if not target_water_level:
+        best_wl = spot_stats.get('best_water_level', '')
+        if best_wl and best_wl in water_level_stats:
+            spot_avg = spot_stats['avg_harvest']
+            if spot_avg > 0:
+                score = water_level_stats[best_wl]['avg_harvest'] / spot_avg
+                return min(score, 1.5)
+        return 0.8
 
     if target_water_level in water_level_stats:
         wl_stat = water_level_stats[target_water_level]
@@ -4397,15 +4409,76 @@ def get_common_water_levels(conn):
     return [r['water_level'] for r in rows]
 
 
+def normalize_weather_desc(weather_desc):
+    weather_mapping = {
+        '晴': ['晴', 'Sunny', '晴天', '晴朗', 'Clear'],
+        '多云': ['多云', '阴', '阴天', 'Cloudy', 'Partly cloudy', 'Overcast', 'Mist', 'Fog', '雾'],
+        '小雨': ['小雨', '雨', '阵雨', '毛毛雨', 'Rain', 'Light rain', 'Drizzle', 'Patchy rain possible'],
+        '大雨': ['大雨', '暴雨', '中雨', '雷阵雨', 'Heavy rain', 'Moderate rain', 'Thunderstorm', '雷暴'],
+        '雪': ['雪', '小雪', '大雪', 'Snow', 'Light snow', 'Heavy snow', 'Sleet']
+    }
+    if not weather_desc:
+        return ''
+    desc_lower = weather_desc.strip()
+    for standard, keywords in weather_mapping.items():
+        for kw in keywords:
+            if kw.lower() in desc_lower.lower() or desc_lower in kw:
+                return standard
+    return ''
+
+
+def fetch_today_weather():
+    try:
+        city = WEATHER_API_CONFIG['city']
+        encoded_city = urllib.parse.quote(city)
+        url = f'https://wttr.in/{encoded_city}?format=j1'
+        req = urllib.request.Request(url, headers={'User-Agent': 'curl/7.68.0'})
+        with urllib.request.urlopen(req, timeout=WEATHER_API_CONFIG['timeout']) as resp:
+            data = json.loads(resp.read().decode('utf-8'))
+        current = data.get('current_condition', [{}])[0]
+        weather_desc = ''
+        if current.get('lang_zh'):
+            weather_desc = current['lang_zh'][0].get('value', '')
+        if not weather_desc and current.get('weatherDesc'):
+            weather_desc = current['weatherDesc'][0].get('value', '')
+        temp_c = current.get('temp_C', '')
+        normalized = normalize_weather_desc(weather_desc)
+        return {
+            'success': True,
+            'weather_desc': weather_desc,
+            'normalized_weather': normalized,
+            'temperature': f'{temp_c}℃' if temp_c else '',
+            'city': city
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'message': str(e)
+        }
+
+
+@app.route('/api/recommend/today-weather')
+def api_recommend_today_weather():
+    result = fetch_today_weather()
+    return jsonify(result)
+
+
 @app.route('/recommend')
 def spot_recommendation():
     conn = get_db()
 
     target_weather = request.args.get('weather', '').strip()
     target_water_level = request.args.get('water_level', '').strip()
+    auto_weather = request.args.get('auto', '0') == '1'
 
     common_weathers = get_common_weathers(conn)
     common_water_levels = get_common_water_levels(conn)
+
+    today_weather_info = None
+    if not target_weather and auto_weather:
+        today_weather_info = fetch_today_weather()
+        if today_weather_info.get('success'):
+            target_weather = today_weather_info.get('normalized_weather', '')
 
     recommended_spots = get_recommended_spots(
         conn,
@@ -4425,7 +4498,8 @@ def spot_recommendation():
         target_water_level=target_water_level,
         common_weathers=common_weathers,
         common_water_levels=common_water_levels,
-        today=today
+        today=today,
+        today_weather_info=today_weather_info
     )
 
 

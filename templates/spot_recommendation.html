@@ -12,8 +12,20 @@
         <div class="recommend-filter-title">
             <span class="filter-icon">⚙️</span>
             <span>设置今日条件</span>
+            <button type="button" class="btn-auto-weather" id="btnAutoWeather" title="自动获取今日天气">
+                <span class="auto-icon">📍</span>
+                <span class="auto-text">自动获取今日天气</span>
+            </button>
         </div>
-        <form method="get" action="{{ url_for('spot_recommendation') }}" class="recommend-filter-form">
+        <div class="weather-auto-info" id="weatherAutoInfo" style="display:none;">
+            <div class="weather-loading" id="weatherLoading" style="display:none;">
+                <span class="loading-spinner"></span>
+                <span>正在获取今日天气...</span>
+            </div>
+            <div class="weather-result" id="weatherResult" style="display:none;"></div>
+        </div>
+        <form method="get" action="{{ url_for('spot_recommendation') }}" class="recommend-filter-form" id="recommendForm">
+            <input type="hidden" name="auto" id="autoInput" value="0">
             <div class="filter-row">
                 <div class="filter-item">
                     <label for="weather">今日天气</label>
@@ -40,7 +52,17 @@
                 </div>
             </div>
         </form>
-        {% if target_weather or target_water_level %}
+        {% if today_weather_info %}
+            <div class="current-conditions">
+                <span class="condition-label">今日天气({{ today_weather_info.city }})：</span>
+                <span class="condition-tag condition-tag-auto">🌤️ {{ today_weather_info.weather_desc }} {{ today_weather_info.temperature }}</span>
+                {% if today_weather_info.normalized_weather %}
+                    <span class="condition-tag">📌 已匹配：{{ today_weather_info.normalized_weather }}</span>
+                {% else %}
+                    <span class="condition-tag condition-tag-warning">⚠️ 未能自动匹配天气类型，请手动选择</span>
+                {% endif %}
+            </div>
+        {% elif target_weather or target_water_level %}
             <div class="current-conditions">
                 <span class="condition-label">当前条件：</span>
                 {% if target_weather %}
@@ -61,7 +83,13 @@
                 <span class="stat-value">{{ recommended_spots|length }}</span>
                 <span class="stat-unit">个钓点</span>
             </div>
-            {% if target_weather or target_water_level %}
+            {% if not target_weather and not target_water_level %}
+                <div class="recommend-stat-item">
+                    <span class="stat-icon">🏆</span>
+                    <span class="stat-label">排序依据</span>
+                    <span class="stat-value">综合最佳表现</span>
+                </div>
+            {% else %}
                 <div class="recommend-stat-item">
                     <span class="stat-icon">🎯</span>
                     <span class="stat-label">匹配模式</span>
@@ -135,6 +163,8 @@
                                         <span class="best-condition-value">🌤️ {{ spot.stats.best_weather }}</span>
                                         {% if target_weather and spot.stats.best_weather == target_weather %}
                                             <span class="match-badge">✓ 匹配</span>
+                                        {% elif not target_weather %}
+                                            <span class="match-badge match-badge-auto">⚡ 加权</span>
                                         {% endif %}
                                     </div>
                                 {% endif %}
@@ -144,6 +174,8 @@
                                         <span class="best-condition-value">💧 {{ spot.stats.best_water_level }}</span>
                                         {% if target_water_level and spot.stats.best_water_level == target_water_level %}
                                             <span class="match-badge">✓ 匹配</span>
+                                        {% elif not target_water_level %}
+                                            <span class="match-badge match-badge-auto">⚡ 加权</span>
                                         {% endif %}
                                     </div>
                                 {% endif %}
@@ -181,6 +213,7 @@
             <p>• 历史出鱼表现：平均收获量 × (1 - 空军率惩罚系数)</p>
             <p>• 天气匹配度：目标天气下平均收获 / 钓点总体平均收获</p>
             <p>• 水位匹配度：目标水位下平均收获 / 钓点总体平均收获</p>
+            <p>• <strong>未设置条件时</strong>：使用该钓点历史最佳天气/水位条件参与真实加权</p>
             <p>• 数据量不足3次的钓点会降低置信度权重</p>
         </div>
     {% else %}
@@ -189,4 +222,74 @@
             <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>
         </div>
     {% endif %}
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var btnAutoWeather = document.getElementById('btnAutoWeather');
+        var weatherLoading = document.getElementById('weatherLoading');
+        var weatherResult = document.getElementById('weatherResult');
+        var weatherAutoInfo = document.getElementById('weatherAutoInfo');
+        var weatherSelect = document.getElementById('weather');
+        var autoInput = document.getElementById('autoInput');
+        var recommendForm = document.getElementById('recommendForm');
+
+        function getTodayWeather(autoSubmit) {
+            weatherAutoInfo.style.display = 'block';
+            weatherLoading.style.display = 'flex';
+            weatherResult.style.display = 'none';
+
+            fetch('{{ url_for("api_recommend_today_weather") }}')
+                .then(function(resp) { return resp.json(); })
+                .then(function(data) {
+                    weatherLoading.style.display = 'none';
+                    weatherResult.style.display = 'block';
+
+                    if (data.success) {
+                        var displayText = '🌤️ ' + data.city + ': ' + data.weather_desc;
+                        if (data.temperature) displayText += ' ' + data.temperature;
+                        weatherResult.innerHTML = '<span class="weather-result-success">' + displayText + '</span>';
+
+                        if (data.normalized_weather) {
+                            var found = false;
+                            for (var i = 0; i < weatherSelect.options.length; i++) {
+                                if (weatherSelect.options[i].value === data.normalized_weather) {
+                                    weatherSelect.selectedIndex = i;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (!found) {
+                                weatherResult.innerHTML += '<span class="weather-result-warn"> ⚠️ 历史数据中无此天气类型，请手动选择</span>';
+                            }
+                            autoInput.value = '1';
+                            if (autoSubmit) {
+                                setTimeout(function() {
+                                    recommendForm.submit();
+                                }, 500);
+                            }
+                        } else {
+                            weatherResult.innerHTML += '<span class="weather-result-warn"> ⚠️ 无法识别天气类型，请手动选择</span>';
+                        }
+                    } else {
+                        weatherResult.innerHTML = '<span class="weather-result-error">❌ 获取天气失败: ' + data.message + '</span>';
+                    }
+                })
+                .catch(function(err) {
+                    weatherLoading.style.display = 'none';
+                    weatherResult.style.display = 'block';
+                    weatherResult.innerHTML = '<span class="weather-result-error">❌ 网络错误，请稍后重试</span>';
+                });
+        }
+
+        btnAutoWeather.addEventListener('click', function() {
+            getTodayWeather(true);
+        });
+
+        {% if not target_weather and not today_weather_info %}
+        setTimeout(function() {
+            getTodayWeather(true);
+        }, 300);
+        {% endif %}
+    });
+    </script>
 {% endblock %}

@@ -7287,3 +7287,125 @@ footer {
     }
 }
 
+.recommend-filter-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.btn-auto-weather {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-auto-weather:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.btn-auto-weather:active {
+    transform: translateY(0);
+}
+
+.btn-auto-weather .auto-icon {
+    font-size: 16px;
+}
+
+.weather-auto-info {
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border-left: 4px solid #667eea;
+}
+
+.weather-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #555;
+}
+
+.loading-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #e0e0e0;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+.weather-result {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.weather-result-success {
+    color: #2d6a4f;
+    font-weight: 500;
+}
+
+.weather-result-warn {
+    color: #e76f51;
+    font-size: 13px;
+}
+
+.weather-result-error {
+    color: #d62828;
+    font-weight: 500;
+}
+
+.condition-tag-auto {
+    background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%) !important;
+    color: #0369a1 !important;
+    border-color: #7dd3fc !important;
+}
+
+.condition-tag-warning {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+    color: #b45309 !important;
+    border-color: #fcd34d !important;
+}
+
+.match-badge-auto {
+    background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%);
+    color: #854d0e;
+    border-color: #facc15;
+}
+
+@media (max-width: 480px) {
+    .recommend-filter-title {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .btn-auto-weather {
+        justify-content: center;
+        width: 100%;
+    }
+
+    .weather-result {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
+
