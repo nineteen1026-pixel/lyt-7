@@ -3,6 +3,26 @@
 {% block title %}首页 - 钓点日志{% endblock %}
 
 {% block content %}
+    <div class="global-search-bar">
+        <div class="global-search-wrapper">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="globalSearchInput" 
+                   placeholder="搜索钓点、鱼种、饵料、收获关键词..." 
+                   value="{{ search_query }}"
+                   autocomplete="off">
+            {% if search_query %}
+            <button class="search-clear-btn" onclick="clearSearch()" title="清除">✕</button>
+            {% endif %}
+        </div>
+        <div class="search-tags">
+            <span class="search-tag-label">快捷搜索：</span>
+            <button class="search-tag-btn" onclick="quickSearch('鲫鱼')">鲫鱼</button>
+            <button class="search-tag-btn" onclick="quickSearch('鲤鱼')">鲤鱼</button>
+            <button class="search-tag-btn" onclick="quickSearch('空军')">空军</button>
+            <button class="search-tag-btn" onclick="quickSearch('爆护')">爆护</button>
+        </div>
+    </div>
+
     <div class="overview-bar">
         <div class="overview-item">
             <div class="overview-icon">🎣</div>
@@ -77,9 +97,16 @@
     {% endif %}
 
     <div class="page-header">
-        <h2>最近记录</h2>
+        <h2>{% if search_query %}搜索结果{% else %}最近记录{% endif %}</h2>
         <a href="{{ url_for('add_log') }}" class="btn btn-primary">+ 新增记录</a>
     </div>
+
+    {% if search_query %}
+    <div class="search-result-info">
+        找到 <strong>{{ total }}</strong> 条包含 "<span class="search-keyword">{{ search_query }}</span>" 的记录
+        <button class="btn btn-small btn-secondary" onclick="clearSearch()">清除搜索</button>
+    </div>
+    {% endif %}
 
     {% if logs %}
         <div class="toolbar">
@@ -108,10 +135,10 @@
 
         <div class="log-list">
             {% for log in logs %}
-                <div class="log-card">
+                <div class="log-card {% if search_query %}search-result-card{% endif %}" data-search-fields='{"spot":{{ log["spot"]|tojson }},"bait":{{ log["bait"]|tojson }},"fish_species":{{ log["fish_species"]|tojson }},"harvest":{{ log["harvest"]|tojson }}}'>
                     <div class="log-header">
                         <span class="log-date">{{ log['created_at'] }}</span>
-                        <span class="log-spot">📍 {{ log['spot'] }}</span>
+                        <span class="log-spot search-field" data-field="spot">📍 {{ log['spot'] }}</span>
                     </div>
                     <div class="log-body">
                         <div class="log-row">
@@ -127,19 +154,19 @@
                         </div>
                         <div class="log-row">
                             <span class="label">饵料：</span>
-                            <span>{{ log['bait'] }}</span>
+                            <span class="search-field" data-field="bait">{{ log['bait'] }}</span>
                         </div>
                         <div class="log-row">
                             <span class="label">鱼种：</span>
-                            <span>{{ log['fish_species'] }}</span>
+                            <span class="search-field" data-field="fish_species">{{ log['fish_species'] }}</span>
                         </div>
                         <div class="log-row">
                             <span class="label">收获：</span>
-                            <span class="harvest">{{ log['harvest'] }}</span>
+                            <span class="harvest search-field" data-field="harvest">{{ log['harvest'] }}</span>
                         </div>
                     </div>
                     <div class="log-footer">
-                        <a href="{{ url_for('log_detail', log_id=log['id'], page=page, sort=sort_by, per_page=per_page) }}" class="btn btn-small">查看详情</a>
+                        <a href="{{ url_for('log_detail', log_id=log['id'], page=page, sort=sort_by, per_page=per_page, q=search_query) }}" class="btn btn-small">查看详情</a>
                     </div>
                 </div>
             {% endfor %}
@@ -148,8 +175,8 @@
         {% if total_pages > 1 %}
             <div class="pagination">
                 {% if page > 1 %}
-                    <a href="{{ url_for('index', page=1, sort=sort_by, per_page=per_page) }}" class="page-btn">&laquo; 首页</a>
-                    <a href="{{ url_for('index', page=page-1, sort=sort_by, per_page=per_page) }}" class="page-btn">&lsaquo; 上一页</a>
+                    <a href="{{ url_for('index', page=1, sort=sort_by, per_page=per_page, q=search_query) }}" class="page-btn">&laquo; 首页</a>
+                    <a href="{{ url_for('index', page=page-1, sort=sort_by, per_page=per_page, q=search_query) }}" class="page-btn">&lsaquo; 上一页</a>
                 {% else %}
                     <span class="page-btn disabled">&laquo; 首页</span>
                     <span class="page-btn disabled">&lsaquo; 上一页</span>
@@ -164,7 +191,7 @@
                     {% if p == page %}
                         <span class="page-btn active">{{ p }}</span>
                     {% else %}
-                        <a href="{{ url_for('index', page=p, sort=sort_by, per_page=per_page) }}" class="page-btn">{{ p }}</a>
+                        <a href="{{ url_for('index', page=p, sort=sort_by, per_page=per_page, q=search_query) }}" class="page-btn">{{ p }}</a>
                     {% endif %}
                 {% endfor %}
                 {% if end_page < total_pages %}
@@ -172,8 +199,8 @@
                 {% endif %}
 
                 {% if page < total_pages %}
-                    <a href="{{ url_for('index', page=page+1, sort=sort_by, per_page=per_page) }}" class="page-btn">下一页 &rsaquo;</a>
-                    <a href="{{ url_for('index', page=total_pages, sort=sort_by, per_page=per_page) }}" class="page-btn">末页 &raquo;</a>
+                    <a href="{{ url_for('index', page=page+1, sort=sort_by, per_page=per_page, q=search_query) }}" class="page-btn">下一页 &rsaquo;</a>
+                    <a href="{{ url_for('index', page=total_pages, sort=sort_by, per_page=per_page, q=search_query) }}" class="page-btn">末页 &raquo;</a>
                 {% else %}
                     <span class="page-btn disabled">下一页 &rsaquo;</span>
                     <span class="page-btn disabled">末页 &raquo;</span>
@@ -188,16 +215,105 @@
     {% endif %}
 
     <script>
+        const searchQuery = {{ search_query|tojson }};
+
+        function handleSearch(event) {
+            if (event.key === 'Enter') {
+                performSearch();
+            }
+        }
+
+        function performSearch() {
+            const query = document.getElementById('globalSearchInput').value.trim();
+            const url = new URL('{{ url_for('index') }}', window.location.origin);
+            if (query) {
+                url.searchParams.set('q', query);
+            }
+            url.searchParams.set('page', '1');
+            const sortSelect = document.getElementById('sortSelect');
+            if (sortSelect) {
+                url.searchParams.set('sort', sortSelect.value);
+            }
+            const perPageSelect = document.getElementById('perPageSelect');
+            if (perPageSelect) {
+                url.searchParams.set('per_page', perPageSelect.value);
+            }
+            window.location.href = url.toString();
+        }
+
+        function quickSearch(keyword) {
+            document.getElementById('globalSearchInput').value = keyword;
+            performSearch();
+        }
+
+        function clearSearch() {
+            const url = new URL('{{ url_for('index') }}', window.location.origin);
+            const sortSelect = document.getElementById('sortSelect');
+            if (sortSelect) {
+                url.searchParams.set('sort', sortSelect.value);
+            }
+            const perPageSelect = document.getElementById('perPageSelect');
+            if (perPageSelect) {
+                url.searchParams.set('per_page', perPageSelect.value);
+            }
+            window.location.href = url.toString();
+        }
+
         function handleSortChange() {
             const sortValue = document.getElementById('sortSelect').value;
             const perPage = document.getElementById('perPageSelect').value;
-            window.location.href = `{{ url_for('index') }}?page=1&sort=${sortValue}&per_page=${perPage}`;
+            const url = new URL('{{ url_for('index') }}', window.location.origin);
+            url.searchParams.set('page', '1');
+            url.searchParams.set('sort', sortValue);
+            url.searchParams.set('per_page', perPage);
+            if (searchQuery) {
+                url.searchParams.set('q', searchQuery);
+            }
+            window.location.href = url.toString();
         }
 
         function handlePerPageChange() {
             const sortValue = document.getElementById('sortSelect').value;
             const perPage = document.getElementById('perPageSelect').value;
-            window.location.href = `{{ url_for('index') }}?page=1&sort=${sortValue}&per_page=${perPage}`;
+            const url = new URL('{{ url_for('index') }}', window.location.origin);
+            url.searchParams.set('page', '1');
+            url.searchParams.set('sort', sortValue);
+            url.searchParams.set('per_page', perPage);
+            if (searchQuery) {
+                url.searchParams.set('q', searchQuery);
+            }
+            window.location.href = url.toString();
         }
+
+        function highlightSearchResults() {
+            if (!searchQuery) return;
+
+            const query = searchQuery.toLowerCase();
+            const fields = document.querySelectorAll('.search-field');
+
+            fields.forEach(field => {
+                const text = field.textContent;
+                const lowerText = text.toLowerCase();
+                const index = lowerText.indexOf(query);
+
+                if (index !== -1) {
+                    const before = text.substring(0, index);
+                    const match = text.substring(index, index + query.length);
+                    const after = text.substring(index + query.length);
+                    field.innerHTML = before + '<mark class="search-highlight">' + match + '</mark>' + after;
+                }
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('globalSearchInput');
+            if (searchInput) {
+                searchInput.addEventListener('keypress', handleSearch);
+                searchInput.addEventListener('focus', function() {
+                    this.select();
+                });
+            }
+            highlightSearchResults();
+        });
     </script>
 {% endblock %}

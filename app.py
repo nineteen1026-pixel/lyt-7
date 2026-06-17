@@ -514,6 +514,7 @@ def index():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
     sort_by = request.args.get('sort', 'date_desc')
+    search_query = request.args.get('q', '').strip()
 
     per_page = max(10, min(per_page, 100))
 
@@ -530,15 +531,25 @@ def index():
     upcoming_strategies = get_upcoming_strategies(conn)
     overview_stats = get_overview_stats(conn)
 
-    count_result = conn.execute('SELECT COUNT(*) as total FROM fishing_logs WHERE deleted_at IS NULL').fetchone()
+    conditions = ['deleted_at IS NULL']
+    params = []
+
+    if search_query:
+        search_pattern = f'%{search_query}%'
+        conditions.append('(spot LIKE ? OR bait LIKE ? OR fish_species LIKE ? OR harvest LIKE ?)')
+        params.extend([search_pattern, search_pattern, search_pattern, search_pattern])
+
+    where_clause = ' AND '.join(conditions)
+
+    count_result = conn.execute(f'SELECT COUNT(*) as total FROM fishing_logs WHERE {where_clause}', params).fetchone()
     total = count_result['total']
     total_pages = max(1, (total + per_page - 1) // per_page)
     page = max(1, min(page, total_pages))
     offset = (page - 1) * per_page
 
     logs = conn.execute(
-        f'SELECT * FROM fishing_logs WHERE deleted_at IS NULL ORDER BY {order_clause} LIMIT ? OFFSET ?',
-        (per_page, offset)
+        f'SELECT * FROM fishing_logs WHERE {where_clause} ORDER BY {order_clause} LIMIT ? OFFSET ?',
+        params + [per_page, offset]
     ).fetchall()
     conn.close()
 
@@ -552,7 +563,8 @@ def index():
         sort_by=sort_by,
         sort_label=sort_label,
         upcoming_strategies=upcoming_strategies,
-        overview_stats=overview_stats
+        overview_stats=overview_stats,
+        search_query=search_query
     )
 
 
