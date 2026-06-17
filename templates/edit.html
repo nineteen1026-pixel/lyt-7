@@ -46,10 +46,10 @@
                 <label for="weather">天气状况 <span class="required">*</span></label>
                 <div class="bait-select-wrapper">
                     <select id="weather-select" onchange="handleWeatherSelect()">
-                        <option value="">-- 选择历史天气 --</option>
+                        <option value="">-- 选择天气类别 --</option>
                         {% if common_weathers %}
                             {% for w in common_weathers %}
-                                <option value="{{ w }}" {% if log['weather'] == w %}selected{% endif %}>{{ w }}</option>
+                                <option value="{{ w.name }}" {% if normalized_weather == w.name %}selected{% endif %}>{{ w.name }} ({{ w.count }}次)</option>
                             {% endfor %}
                         {% endif %}
                     </select>
@@ -135,10 +135,10 @@
                 <label for="water_level">水位 <span class="required">*</span></label>
                 <div class="bait-select-wrapper">
                     <select id="water-level-select" onchange="handleWaterLevelSelect()">
-                        <option value="">-- 选择历史水位 --</option>
+                        <option value="">-- 选择水位类别 --</option>
                         {% if common_water_levels %}
                             {% for wl in common_water_levels %}
-                                <option value="{{ wl }}" {% if log['water_level'] == wl %}selected{% endif %}>{{ wl }}</option>
+                                <option value="{{ wl.name }}" {% if normalized_water_level == wl.name %}selected{% endif %}>{{ wl.name }} ({{ wl.count }}次)</option>
                             {% endfor %}
                         {% endif %}
                     </select>
@@ -492,7 +492,6 @@
         var input = document.getElementById('weather');
         if (select.value) {
             input.value = select.value;
-            select.value = '';
         }
     }
 
@@ -501,7 +500,6 @@
         var input = document.getElementById('water_level');
         if (select.value) {
             input.value = select.value;
-            select.value = '';
         }
     }
 

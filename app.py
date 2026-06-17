@@ -630,6 +630,8 @@ def edit_log(log_id):
     log_photos = get_log_photos(conn, log_id)
     common_weathers = get_common_weathers(conn)
     common_water_levels = get_common_water_levels(conn)
+    normalized_weather = normalize_weather_desc(log['weather']) if log else ''
+    normalized_water_level = normalize_water_level(log['water_level']) if log else ''
 
     if log is None:
         conn.close()
@@ -792,7 +794,9 @@ def edit_log(log_id):
                            total_equipment_cost=total_eq_cost,
                            log_photos=log_photos,
                            common_weathers=common_weathers,
-                           common_water_levels=common_water_levels)
+                           common_water_levels=common_water_levels,
+                           normalized_weather=normalized_weather,
+                           normalized_water_level=normalized_water_level)
 
 
 def get_upcoming_strategies(conn):
@@ -4895,20 +4899,50 @@ def get_recommended_spots(conn, target_weather='', target_water_level='', limit=
 
 def get_common_weathers(conn):
     rows = conn.execute('''
-        SELECT DISTINCT weather FROM fishing_logs
+        SELECT weather FROM fishing_logs
         WHERE weather IS NOT NULL AND weather != '' AND deleted_at IS NULL
-        ORDER BY weather
     ''').fetchall()
-    return [r['weather'] for r in rows]
+    freq = {}
+    for r in rows:
+        cat = normalize_weather_desc(r['weather'])
+        if cat:
+            freq[cat] = freq.get(cat, 0) + 1
+    sorted_items = sorted(freq.items(), key=lambda x: x[1], reverse=True)
+    return [{'name': k, 'count': v} for k, v in sorted_items]
+
+
+def normalize_water_level(water_level):
+    if not water_level:
+        return ''
+    wl = water_level.strip()
+    high_kw = ['涨', '高', 'High', '满', '溢', '偏高', 'above', 'rising']
+    normal_kw = ['正常', 'Normal', '平', '稳', 'normal', 'stable']
+    low_kw = ['退', '低', 'Low', '枯', '偏低', 'below', '干', '降', '落']
+    for kw in high_kw:
+        if kw.lower() in wl.lower() or wl in kw:
+            return '高'
+    for kw in normal_kw:
+        if kw.lower() in wl.lower() or wl in kw:
+            return '正常'
+    for kw in low_kw:
+        if kw.lower() in wl.lower() or wl in kw:
+            return '低'
+    return ''
 
 
 def get_common_water_levels(conn):
     rows = conn.execute('''
-        SELECT DISTINCT water_level FROM fishing_logs
+        SELECT water_level FROM fishing_logs
         WHERE water_level IS NOT NULL AND water_level != '' AND deleted_at IS NULL
-        ORDER BY water_level
     ''').fetchall()
-    return [r['water_level'] for r in rows]
+    freq = {}
+    for r in rows:
+        cat = normalize_water_level(r['water_level'])
+        if cat:
+            freq[cat] = freq.get(cat, 0) + 1
+    order = {'高': 0, '正常': 1, '低': 2}
+    sorted_items = sorted(freq.items(), key=lambda x: (order.get(x[0], 99), -x[1]))
+    return [{'name': k, 'count': v} for k, v in sorted_items]
 
 
 def get_latest_weather(conn):

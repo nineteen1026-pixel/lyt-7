@@ -32,7 +32,7 @@
                     <select id="weather" name="weather">
                         <option value="">全部天气</option>
                         {% for w in common_weathers %}
-                            <option value="{{ w }}" {% if target_weather == w %}selected{% endif %}>{{ w }}</option>
+                            <option value="{{ w.name }}" {% if target_weather == w.name %}selected{% endif %}>{{ w.name }} ({{ w.count }}次)</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -41,7 +41,7 @@
                     <select id="water_level" name="water_level">
                         <option value="">全部水位</option>
                         {% for wl in common_water_levels %}
-                            <option value="{{ wl }}" {% if target_water_level == wl %}selected{% endif %}>{{ wl }}</option>
+                            <option value="{{ wl.name }}" {% if target_water_level == wl.name %}selected{% endif %}>{{ wl.name }} ({{ wl.count }}次)</option>
                         {% endfor %}
                     </select>
                 </div>
