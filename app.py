@@ -730,10 +730,16 @@ def by_spot():
     spots = conn.execute('SELECT DISTINCT spot FROM fishing_logs WHERE deleted_at IS NULL ORDER BY spot').fetchall()
     spot_list = [row['spot'] for row in spots]
 
+    spot_skunk_map = {}
+    for spot_name in spot_list:
+        spot_skunk_map[spot_name] = get_spot_skunk_stats(conn, spot_name)
+
     selected_spot = request.args.get('spot', spot_list[0] if spot_list else None)
     logs = []
     log_photos_dict = {}
+    selected_skunk_stats = None
     if selected_spot:
+        selected_skunk_stats = spot_skunk_map.get(selected_spot)
         log_rows = conn.execute(
             'SELECT * FROM fishing_logs WHERE spot = ? AND deleted_at IS NULL ORDER BY created_at DESC, id DESC',
             (selected_spot,)
@@ -757,10 +763,12 @@ def by_spot():
         for log in logs:
             log['photos'] = log_photos_dict.get(log['id'], [])
             log['photo_count'] = len(log['photos'])
+            log['is_skunked'] = is_skunked(log['harvest'])
 
     conn.close()
 
-    return render_template('by_spot.html', spot_list=spot_list, selected_spot=selected_spot, logs=logs)
+    return render_template('by_spot.html', spot_list=spot_list, selected_spot=selected_spot, logs=logs,
+                           spot_skunk_map=spot_skunk_map, selected_skunk_stats=selected_skunk_stats)
 
 
 @app.route('/by-date')

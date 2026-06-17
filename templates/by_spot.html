@@ -8,23 +8,73 @@
     </div>
 
     {% if spot_list %}
-        <div class="filter-bar">
+        <div class="filter-bar by-spot-filter-bar">
             {% for spot in spot_list %}
+                {% set skunk = spot_skunk_map.get(spot) %}
                 <a href="{{ url_for('by_spot', spot=spot) }}"
-                   class="filter-btn {% if spot == selected_spot %}active{% endif %}">
+                   class="filter-btn {% if spot == selected_spot %}active{% endif %} {% if skunk and skunk['has_skunk'] %}filter-btn-skunked{% endif %} {% if skunk and skunk['recent_skunk'] %}filter-btn-skunk-recent{% endif %}"
+                   title="{% if skunk %}空军率 {{ skunk['skunk_rate'] }}% ({{ skunk['skunk_count'] }}/{{ skunk['total_count'] }}次){% endif %}">
                     {{ spot }}
+                    {% if skunk and skunk['has_skunk'] %}
+                        <span class="skunk-badge-small" title="空军率 {{ skunk['skunk_rate'] }}%">🦨</span>
+                    {% endif %}
                 </a>
             {% endfor %}
         </div>
 
+        {% if selected_skunk_stats and selected_skunk_stats['total_count'] > 0 %}
+        <div class="by-spot-stats-card {% if selected_skunk_stats['has_skunk'] %}by-spot-stats-skunked{% endif %} {% if selected_skunk_stats['recent_skunk'] %}by-spot-stats-recent-skunk{% endif %}">
+            <div class="by-spot-stats-header">
+                <h3 class="by-spot-stats-title">
+                    📊 {{ selected_spot }} - 钓点统计
+                    {% if selected_skunk_stats['has_skunk'] %}
+                        <span class="skunk-badge {% if selected_skunk_stats['recent_skunk'] %}skunk-badge-recent{% endif %}" title="空军率 {{ selected_skunk_stats['skunk_rate'] }}%">
+                            🦨 空军
+                        </span>
+                    {% endif %}
+                </h3>
+            </div>
+            <div class="by-spot-stats-grid">
+                <div class="by-spot-stat-item">
+                    <span class="by-spot-stat-label">总记录</span>
+                    <span class="by-spot-stat-value">{{ selected_skunk_stats['total_count'] }} 次</span>
+                </div>
+                <div class="by-spot-stat-item">
+                    <span class="by-spot-stat-label">空军次数</span>
+                    <span class="by-spot-stat-value skunk-count-highlight">{{ selected_skunk_stats['skunk_count'] }} 次</span>
+                </div>
+                <div class="by-spot-stat-item">
+                    <span class="by-spot-stat-label">空军率</span>
+                    <span class="by-spot-stat-value skunk-rate-highlight">{{ selected_skunk_stats['skunk_rate'] }}%</span>
+                </div>
+            </div>
+            <div class="by-spot-skunk-bar-wrapper">
+                <span class="by-spot-skunk-bar-label">空军率可视化</span>
+                <div class="by-spot-skunk-bar-track">
+                    <div class="by-spot-skunk-bar-fill" style="width: {{ selected_skunk_stats['skunk_rate'] }}%"></div>
+                    <div class="by-spot-skunk-bar-harvest" style="width: {{ 100 - selected_skunk_stats['skunk_rate'] }}%"></div>
+                </div>
+                <div class="by-spot-skunk-bar-legend">
+                    <span class="legend-skunk">🦨 空军 {{ selected_skunk_stats['skunk_rate'] }}%</span>
+                    <span class="legend-harvest">🐟 有收获 {{ 100 - selected_skunk_stats['skunk_rate'] }}%</span>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         {% if logs %}
             <div class="log-list">
                 {% for log in logs %}
-                    <div class="log-card">
+                    <div class="log-card {% if log['is_skunked'] %}log-card-skunked{% endif %}">
                         <div class="log-header">
                             <span class="log-date">{{ log['created_at'] }}</span>
-                            <span class="log-spot">📍 {{ log['spot'] }}</span>
-                            {% if log.photo_count %}<span class="photo-count">📷 {{ log.photo_count }}</span>{% endif %}
+                            <div class="log-header-tags">
+                                <span class="log-spot">📍 {{ log['spot'] }}</span>
+                                {% if log['is_skunked'] %}
+                                    <span class="skunk-tag-log" title="本次空军">🦨 空军</span>
+                                {% endif %}
+                                {% if log.photo_count %}<span class="photo-count">📷 {{ log.photo_count }}</span>{% endif %}
+                            </div>
                         </div>
                         <div class="log-body">
                             <div class="log-row">
@@ -45,7 +95,10 @@
                             </div>
                             <div class="log-row">
                                 <span class="label">收获：</span>
-                                <span class="harvest">{{ log['harvest'] }}</span>
+                                <span class="harvest {% if log['is_skunked'] %}harvest-skunked{% endif %}">{{ log['harvest'] }}</span>
+                                {% if log['is_skunked'] %}
+                                    <span class="harvest-skunk-hint">(空军)</span>
+                                {% endif %}
                             </div>
                             {% if log.photos %}
                             <div class="log-card-photos-preview">
